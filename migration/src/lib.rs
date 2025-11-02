@@ -2,6 +2,7 @@ pub use sea_orm_migration::prelude::*;
 
 mod m20220101_000001_create_table;
 mod m20251028_000002_restructure_major_department;
+mod m20251102_172939_create_table_user_mfa;
 
 pub struct Migrator;
 
@@ -11,6 +12,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20220101_000001_create_table::Migration),
             Box::new(m20251028_000002_restructure_major_department::Migration),
+            Box::new(m20251102_172939_create_table_user_mfa::Migration),
         ]
     }
 }
