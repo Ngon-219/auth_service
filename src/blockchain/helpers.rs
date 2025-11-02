@@ -4,8 +4,9 @@ use uuid::Uuid;
 
 use super::service::BlockchainService;
 use crate::entities::wallet;
+use crate::utils::encryption::decrypt_private_key;
+use crate::config::APP_CONFIG;
 
-/// Get user's private key from database
 pub async fn get_user_private_key(db: &DatabaseConnection, user_id: &Uuid) -> Result<String> {
     let wallet_info = wallet::Entity::find()
         .filter(wallet::Column::UserId.eq(*user_id))
@@ -13,11 +14,11 @@ pub async fn get_user_private_key(db: &DatabaseConnection, user_id: &Uuid) -> Re
         .await
         .context("Failed to query wallet")?
         .ok_or_else(|| anyhow::anyhow!("Wallet not found for user"))?;
-
-    Ok(wallet_info.private_key)
+    
+    decrypt_private_key(&wallet_info.private_key, &APP_CONFIG.encryption_key)
+        .context("Failed to decrypt private key")
 }
 
-/// Create BlockchainService for a specific user
 pub async fn get_user_blockchain_service(
     db: &DatabaseConnection,
     user_id: &Uuid,
@@ -26,7 +27,6 @@ pub async fn get_user_blockchain_service(
     BlockchainService::new(&private_key).await
 }
 
-/// Create BlockchainService with admin private key (for admin operations)
 pub async fn get_admin_blockchain_service() -> Result<BlockchainService> {
     use crate::config::APP_CONFIG;
     BlockchainService::new(&APP_CONFIG.admin_private_key).await

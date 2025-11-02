@@ -5,6 +5,7 @@ pub mod bootstrap;
 pub mod config;
 pub mod entities;
 pub mod extractor;
+pub mod grpc;
 pub mod middleware;
 pub mod routes;
 pub mod static_service;

@@ -21,6 +21,8 @@ use crate::entities::{user, user_major, wallet};
 use crate::extractor::AuthClaims;
 use crate::middleware::permission;
 use crate::static_service::DATABASE_CONNECTION;
+use crate::utils::encryption::encrypt_private_key;
+use crate::config::APP_CONFIG;
 
 pub fn create_route() -> Router {
     Router::new()
@@ -44,6 +46,7 @@ pub fn create_route() -> Router {
         (status = 400, description = "Bad request"),
         (status = 500, description = "Internal server error")
     ),
+    security(("bearer_auth" = [])),
     tag = "Users"
 )]
 pub async fn create_user(
@@ -89,6 +92,15 @@ pub async fn create_user(
             )
         })?;
 
+    // Encrypt private key before storing
+    let encrypted_private_key = encrypt_private_key(&wallet_private_key, &APP_CONFIG.encryption_key)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to encrypt private key: {}", e),
+            )
+        })?;
+
     let user_id = Uuid::new_v4();
     let wallet_id = Uuid::new_v4();
     let now = Utc::now().naive_utc();
@@ -120,7 +132,7 @@ pub async fn create_user(
         wallet_id: Set(wallet_id),
         user_id: Set(user_id),
         address: Set(wallet_address.clone()),
-        private_key: Set(wallet_private_key.clone()), // Store encrypted in production!
+        private_key: Set(encrypted_private_key),
         chain_type: Set("ethereum".to_string()),
         public_key: Set(wallet_address.clone()),
         status: Set("active".to_string()),
@@ -214,7 +226,7 @@ pub async fn create_user(
         email: user.email,
         role: user.role,
         wallet_address,
-        wallet_private_key,
+        encrypted_private_key,
         is_first_login: user.is_first_login,
         created_at: user.create_at,
     };
@@ -425,13 +437,24 @@ pub async fn create_users_bulk(
             });
             continue;
         }
-
-        // Create wallet record
+        
+        let encrypted_private_key = match encrypt_private_key(&wallet_private_key, &APP_CONFIG.encryption_key) {
+            Ok(encrypted) => encrypted,
+            Err(e) => {
+                errors.push(BulkUserError {
+                    row: 0,
+                    email: user_data.email.clone(),
+                    error: format!("Failed to encrypt private key: {}", e),
+                });
+                continue;
+            }
+        };
+        
         let wallet_model = wallet::ActiveModel {
             wallet_id: Set(wallet_id),
             user_id: Set(user_id),
             address: Set(wallet_address.clone()),
-            private_key: Set(wallet_private_key.clone()),
+            private_key: Set(encrypted_private_key),
             chain_type: Set("ethereum".to_string()),
             public_key: Set(wallet_address.clone()),
             status: Set("active".to_string()),

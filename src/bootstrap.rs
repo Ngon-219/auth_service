@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::config::APP_CONFIG;
 use crate::entities::{sea_orm_active_enums::RoleEnum, user, wallet};
+use crate::utils::encryption::encrypt_private_key;
 
 /// Initialize default admin user if not exists
 pub async fn initialize_admin_user(db: &DatabaseConnection) -> Result<()> {
@@ -34,6 +35,9 @@ pub async fn initialize_admin_user(db: &DatabaseConnection) -> Result<()> {
 
     let wallet_address = format!("{:?}", admin_wallet.address());
     let private_key = APP_CONFIG.admin_private_key.clone();
+
+    let encrypted_private_key = encrypt_private_key(&private_key, &APP_CONFIG.encryption_key)
+        .context("Failed to encrypt admin private key")?;
 
     // Hash default password
     let hashed_password = bcrypt::hash(DEFAULT_PASSWORD, bcrypt::DEFAULT_COST)
@@ -70,7 +74,7 @@ pub async fn initialize_admin_user(db: &DatabaseConnection) -> Result<()> {
         wallet_id: Set(wallet_id),
         user_id: Set(user_id),
         address: Set(wallet_address.clone()),
-        private_key: Set(private_key),
+        private_key: Set(encrypted_private_key),
         chain_type: Set("ethereum".to_string()),
         public_key: Set(wallet_address.clone()),
         status: Set("active".to_string()),

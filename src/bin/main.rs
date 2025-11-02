@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 
 use auth_service::bootstrap::initialize_admin_user;
+use auth_service::grpc::start_grpc_server;
 use auth_service::static_service::get_database_connection;
 use auth_service::{app, config::APP_CONFIG, utils::tracing::init_standard_tracing};
 
@@ -24,16 +25,31 @@ async fn main() -> anyhow::Result<()> {
 
     let app = app::create_app().await?;
 
-    let address = format!("0.0.0.0:{}", APP_CONFIG.port);
+    let http_address = format!("0.0.0.0:{}", APP_CONFIG.port);
 
-    tracing::info!("Server listening on {}", &address);
-    let listener = tokio::net::TcpListener::bind(address).await.unwrap();
-    axum::serve(
+    // Start gRPC server in background
+    let grpc_handle = tokio::spawn(async move {
+        if let Err(e) = start_grpc_server().await {
+            tracing::error!("gRPC server error: {}", e);
+        }
+    });
+
+    tracing::info!("HTTP server listening on {}", &http_address);
+    tracing::info!("gRPC server listening on 0.0.0.0:{}", APP_CONFIG.grpc_port);
+    
+    let listener = tokio::net::TcpListener::bind(http_address).await.unwrap();
+    
+    // Run HTTP server
+    let http_result = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .await
-    .expect("Failed to start server");
+    .await;
+
+    // Cancel gRPC server if HTTP server stops
+    grpc_handle.abort();
+
+    http_result.expect("Failed to start HTTP server");
 
     Ok(())
 }
