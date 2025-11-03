@@ -1,4 +1,5 @@
 use lapin::{options::*, BasicProperties, Connection, ConnectionProperties};
+use serde_json::json;
 use crate::config::APP_CONFIG;
 
 pub struct RabbitMQService;
@@ -23,14 +24,23 @@ impl RabbitMQService {
         Ok(())
     }
 
-    pub async fn publish_to_mail_queue(connection: Connection, message: &str) -> Result<(), anyhow::Error>{
+    pub async fn publish_to_mail_queue(connection: Connection, to: &str, subject: &str, email_data: &str) -> Result<(), anyhow::Error>{
+        let standard_msg = json!({
+            "pattern": "send-email",
+            "data": {
+                "to": to,
+                "subject": subject,
+                "text": email_data
+            }
+        });
+
         let channel = connection.create_channel().await?;
 
         channel.basic_publish(
             "",
             "mail_service",
             BasicPublishOptions::default(),
-            message.to_string().as_bytes(),
+            standard_msg.to_string().as_bytes(),
             BasicProperties::default(),
         ).await?;
 
