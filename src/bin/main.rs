@@ -4,6 +4,7 @@ use auth_service::bootstrap::initialize_admin_user;
 use auth_service::grpc::start_grpc_server;
 use auth_service::static_service::get_database_connection;
 use auth_service::{app, config::APP_CONFIG, utils::tracing::init_standard_tracing};
+use auth_service::rabbitmq_service::rabbitmq_service::RabbitMQService;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -15,6 +16,12 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize database connection
     let db_connection = get_database_connection().await;
+
+    let rabbit_mq = RabbitMQService::new().await;
+
+    if let Ok(()) = RabbitMQService::create_mail_queue(rabbit_mq).await {
+        tracing::info!("Create rabbitmq queue successfully");
+    }
 
     // Initialize default admin user
     tracing::info!("Checking admin user...");

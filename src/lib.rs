@@ -10,3 +10,4 @@ pub mod middleware;
 pub mod routes;
 pub mod static_service;
 pub mod utils;
+pub mod rabbitmq_service;

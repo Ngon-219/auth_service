@@ -31,4 +31,7 @@ pub struct Config {
 
     #[clap(long, env, default_value_t = 50051)]
     pub grpc_port: u16,
+
+    #[clap(long, env)]
+    pub rabbitmq_uri: String,
 }

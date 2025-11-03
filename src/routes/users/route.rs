@@ -132,7 +132,7 @@ pub async fn create_user(
         wallet_id: Set(wallet_id),
         user_id: Set(user_id),
         address: Set(wallet_address.clone()),
-        private_key: Set(encrypted_private_key),
+        private_key: Set(encrypted_private_key.clone()),
         chain_type: Set("ethereum".to_string()),
         public_key: Set(wallet_address.clone()),
         status: Set("active".to_string()),
@@ -226,7 +226,7 @@ pub async fn create_user(
         email: user.email,
         role: user.role,
         wallet_address,
-        encrypted_private_key,
+        wallet_private_key: encrypted_private_key,
         is_first_login: user.is_first_login,
         created_at: user.create_at,
     };
