@@ -8,36 +8,36 @@ pub struct Entity;
 
 impl EntityName for Entity {
     fn table_name(&self) -> &str {
-        "user_major"
+        "document_type"
     }
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveModel, DeriveActiveModel, Eq, Serialize, Deserialize)]
 pub struct Model {
     #[serde(skip_deserializing)]
-    pub user_id: Uuid,
-    #[serde(skip_deserializing)]
-    pub major_id: Uuid,
-    pub create_at: DateTime,
+    pub document_type_id: Uuid,
+    pub document_type_name: String,
+    pub description: Option<String>,
+    pub created_at: DateTime,
     pub updated_at: DateTime,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveColumn)]
 pub enum Column {
-    UserId,
-    MajorId,
-    CreateAt,
+    DocumentTypeId,
+    DocumentTypeName,
+    Description,
+    CreatedAt,
     UpdatedAt,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DerivePrimaryKey)]
 pub enum PrimaryKey {
-    UserId,
-    MajorId,
+    DocumentTypeId,
 }
 
 impl PrimaryKeyTrait for PrimaryKey {
-    type ValueType = (Uuid, Uuid);
+    type ValueType = Uuid;
     fn auto_increment() -> bool {
         false
     }
@@ -45,17 +45,17 @@ impl PrimaryKeyTrait for PrimaryKey {
 
 #[derive(Copy, Clone, Debug, EnumIter)]
 pub enum Relation {
-    Major,
-    User,
+    Documents,
 }
 
 impl ColumnTrait for Column {
     type EntityName = Entity;
     fn def(&self) -> ColumnDef {
         match self {
-            Self::UserId => ColumnType::Uuid.def(),
-            Self::MajorId => ColumnType::Uuid.def(),
-            Self::CreateAt => ColumnType::DateTime.def(),
+            Self::DocumentTypeId => ColumnType::Uuid.def(),
+            Self::DocumentTypeName => ColumnType::String(StringLen::None).def().unique(),
+            Self::Description => ColumnType::Text.def().null(),
+            Self::CreatedAt => ColumnType::DateTime.def(),
             Self::UpdatedAt => ColumnType::DateTime.def(),
         }
     }
@@ -64,27 +64,14 @@ impl ColumnTrait for Column {
 impl RelationTrait for Relation {
     fn def(&self) -> RelationDef {
         match self {
-            Self::Major => Entity::belongs_to(super::major::Entity)
-                .from(Column::MajorId)
-                .to(super::major::Column::MajorId)
-                .into(),
-            Self::User => Entity::belongs_to(super::user::Entity)
-                .from(Column::UserId)
-                .to(super::user::Column::UserId)
-                .into(),
+            Self::Documents => Entity::has_many(super::documents::Entity).into(),
         }
     }
 }
 
-impl Related<super::major::Entity> for Entity {
+impl Related<super::documents::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Major.def()
-    }
-}
-
-impl Related<super::user::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::User.def()
+        Relation::Documents.def()
     }
 }
 

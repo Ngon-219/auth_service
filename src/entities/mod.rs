@@ -3,8 +3,12 @@
 pub mod prelude;
 
 pub mod department;
+pub mod document_type;
+pub mod documents;
 pub mod major;
+pub mod migrations;
 pub mod sea_orm_active_enums;
 pub mod user;
 pub mod user_major;
+pub mod user_mfa;
 pub mod wallet;

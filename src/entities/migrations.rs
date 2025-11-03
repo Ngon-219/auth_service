@@ -8,73 +8,54 @@ pub struct Entity;
 
 impl EntityName for Entity {
     fn table_name(&self) -> &str {
-        "department"
+        "migrations"
     }
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveModel, DeriveActiveModel, Eq, Serialize, Deserialize)]
 pub struct Model {
     #[serde(skip_deserializing)]
-    pub department_id: Uuid,
+    pub id: i32,
+    pub timestamp: i64,
     pub name: String,
-    pub founding_date: DateTime,
-    pub dean: String,
-    pub create_at: DateTime,
-    pub update_at: DateTime,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveColumn)]
 pub enum Column {
-    DepartmentId,
+    Id,
+    Timestamp,
     Name,
-    FoundingDate,
-    Dean,
-    CreateAt,
-    UpdateAt,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DerivePrimaryKey)]
 pub enum PrimaryKey {
-    DepartmentId,
+    Id,
 }
 
 impl PrimaryKeyTrait for PrimaryKey {
-    type ValueType = Uuid;
+    type ValueType = i32;
     fn auto_increment() -> bool {
-        false
+        true
     }
 }
 
 #[derive(Copy, Clone, Debug, EnumIter)]
-pub enum Relation {
-    Major,
-}
+pub enum Relation {}
 
 impl ColumnTrait for Column {
     type EntityName = Entity;
     fn def(&self) -> ColumnDef {
         match self {
-            Self::DepartmentId => ColumnType::Uuid.def(),
+            Self::Id => ColumnType::Integer.def(),
+            Self::Timestamp => ColumnType::BigInteger.def(),
             Self::Name => ColumnType::String(StringLen::None).def(),
-            Self::FoundingDate => ColumnType::DateTime.def(),
-            Self::Dean => ColumnType::String(StringLen::None).def(),
-            Self::CreateAt => ColumnType::DateTime.def(),
-            Self::UpdateAt => ColumnType::DateTime.def(),
         }
     }
 }
 
 impl RelationTrait for Relation {
     fn def(&self) -> RelationDef {
-        match self {
-            Self::Major => Entity::has_many(super::major::Entity).into(),
-        }
-    }
-}
-
-impl Related<super::major::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Major.def()
+        panic!("No RelationDef")
     }
 }
 

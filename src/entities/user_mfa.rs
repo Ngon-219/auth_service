@@ -8,36 +8,40 @@ pub struct Entity;
 
 impl EntityName for Entity {
     fn table_name(&self) -> &str {
-        "user_major"
+        "user_mfa"
     }
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveModel, DeriveActiveModel, Eq, Serialize, Deserialize)]
 pub struct Model {
     #[serde(skip_deserializing)]
+    pub mfa_id: Uuid,
     pub user_id: Uuid,
-    #[serde(skip_deserializing)]
-    pub major_id: Uuid,
-    pub create_at: DateTime,
+    pub secret: String,
+    pub is_enabled: bool,
+    pub backup_codes: Option<String>,
+    pub created_at: DateTime,
     pub updated_at: DateTime,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveColumn)]
 pub enum Column {
+    MfaId,
     UserId,
-    MajorId,
-    CreateAt,
+    Secret,
+    IsEnabled,
+    BackupCodes,
+    CreatedAt,
     UpdatedAt,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DerivePrimaryKey)]
 pub enum PrimaryKey {
-    UserId,
-    MajorId,
+    MfaId,
 }
 
 impl PrimaryKeyTrait for PrimaryKey {
-    type ValueType = (Uuid, Uuid);
+    type ValueType = Uuid;
     fn auto_increment() -> bool {
         false
     }
@@ -45,7 +49,6 @@ impl PrimaryKeyTrait for PrimaryKey {
 
 #[derive(Copy, Clone, Debug, EnumIter)]
 pub enum Relation {
-    Major,
     User,
 }
 
@@ -53,9 +56,12 @@ impl ColumnTrait for Column {
     type EntityName = Entity;
     fn def(&self) -> ColumnDef {
         match self {
-            Self::UserId => ColumnType::Uuid.def(),
-            Self::MajorId => ColumnType::Uuid.def(),
-            Self::CreateAt => ColumnType::DateTime.def(),
+            Self::MfaId => ColumnType::Uuid.def(),
+            Self::UserId => ColumnType::Uuid.def().unique(),
+            Self::Secret => ColumnType::String(StringLen::None).def(),
+            Self::IsEnabled => ColumnType::Boolean.def(),
+            Self::BackupCodes => ColumnType::String(StringLen::None).def().null(),
+            Self::CreatedAt => ColumnType::DateTime.def(),
             Self::UpdatedAt => ColumnType::DateTime.def(),
         }
     }
@@ -64,21 +70,11 @@ impl ColumnTrait for Column {
 impl RelationTrait for Relation {
     fn def(&self) -> RelationDef {
         match self {
-            Self::Major => Entity::belongs_to(super::major::Entity)
-                .from(Column::MajorId)
-                .to(super::major::Column::MajorId)
-                .into(),
             Self::User => Entity::belongs_to(super::user::Entity)
                 .from(Column::UserId)
                 .to(super::user::Column::UserId)
                 .into(),
         }
-    }
-}
-
-impl Related<super::major::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Major.def()
     }
 }
 

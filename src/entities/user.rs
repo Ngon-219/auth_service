@@ -2,16 +2,24 @@
 
 use super::sea_orm_active_enums::RoleEnum;
 use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "user")]
+#[derive(Copy, Clone, Default, Debug, DeriveEntity)]
+pub struct Entity;
+
+impl EntityName for Entity {
+    fn table_name(&self) -> &str {
+        "user"
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, DeriveModel, DeriveActiveModel, Eq, Serialize, Deserialize)]
 pub struct Model {
-    #[sea_orm(primary_key, auto_increment = false)]
+    #[serde(skip_deserializing)]
     pub user_id: Uuid,
     pub first_name: String,
     pub last_name: String,
     pub address: String,
-    #[sea_orm(unique)]
     pub email: String,
     pub password: String,
     pub is_priority: bool,
@@ -21,19 +29,96 @@ pub struct Model {
     pub create_at: DateTime,
     pub update_at: DateTime,
     pub role: RoleEnum,
+    pub blockchain_sync_status: String,
+    pub blockchain_sync_error: Option<String>,
+    pub blockchain_tx_hash: Option<String>,
+    pub last_sync_attempt: Option<DateTime>,
 }
 
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+#[derive(Copy, Clone, Debug, EnumIter, DeriveColumn)]
+pub enum Column {
+    UserId,
+    FirstName,
+    LastName,
+    Address,
+    Email,
+    Password,
+    IsPriority,
+    Cccd,
+    PhoneNumber,
+    IsFirstLogin,
+    CreateAt,
+    UpdateAt,
+    Role,
+    BlockchainSyncStatus,
+    BlockchainSyncError,
+    BlockchainTxHash,
+    LastSyncAttempt,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DerivePrimaryKey)]
+pub enum PrimaryKey {
+    UserId,
+}
+
+impl PrimaryKeyTrait for PrimaryKey {
+    type ValueType = Uuid;
+    fn auto_increment() -> bool {
+        false
+    }
+}
+
+#[derive(Copy, Clone, Debug, EnumIter)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::user_major::Entity")]
     UserMajor,
-    #[sea_orm(has_one = "super::wallet::Entity")]
+    UserMfa,
     Wallet,
+}
+
+impl ColumnTrait for Column {
+    type EntityName = Entity;
+    fn def(&self) -> ColumnDef {
+        match self {
+            Self::UserId => ColumnType::Uuid.def(),
+            Self::FirstName => ColumnType::String(StringLen::None).def(),
+            Self::LastName => ColumnType::String(StringLen::None).def(),
+            Self::Address => ColumnType::String(StringLen::None).def(),
+            Self::Email => ColumnType::String(StringLen::None).def().unique(),
+            Self::Password => ColumnType::String(StringLen::None).def(),
+            Self::IsPriority => ColumnType::Boolean.def(),
+            Self::Cccd => ColumnType::String(StringLen::None).def(),
+            Self::PhoneNumber => ColumnType::String(StringLen::None).def(),
+            Self::IsFirstLogin => ColumnType::Boolean.def(),
+            Self::CreateAt => ColumnType::DateTime.def(),
+            Self::UpdateAt => ColumnType::DateTime.def(),
+            Self::Role => RoleEnum::db_type().get_column_type().to_owned().def(),
+            Self::BlockchainSyncStatus => ColumnType::String(StringLen::None).def(),
+            Self::BlockchainSyncError => ColumnType::Text.def().null(),
+            Self::BlockchainTxHash => ColumnType::String(StringLen::None).def().null(),
+            Self::LastSyncAttempt => ColumnType::DateTime.def().null(),
+        }
+    }
+}
+
+impl RelationTrait for Relation {
+    fn def(&self) -> RelationDef {
+        match self {
+            Self::UserMajor => Entity::has_many(super::user_major::Entity).into(),
+            Self::UserMfa => Entity::has_one(super::user_mfa::Entity).into(),
+            Self::Wallet => Entity::has_one(super::wallet::Entity).into(),
+        }
+    }
 }
 
 impl Related<super::user_major::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::UserMajor.def()
+    }
+}
+
+impl Related<super::user_mfa::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::UserMfa.def()
     }
 }
 
