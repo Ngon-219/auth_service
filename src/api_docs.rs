@@ -37,6 +37,7 @@ use utoipa::openapi::security::SecurityScheme;
         crate::routes::students::route::activate_student,
         crate::routes::students::route::check_student_active,
         crate::routes::students::route::get_system_info,
+        crate::routes::user_mfa::route::req_enable_mfa,
     ),
     components(
         schemas(

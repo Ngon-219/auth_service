@@ -6,3 +6,4 @@ pub mod managers;
 pub mod profile;
 pub mod students;
 pub mod users;
+pub mod user_mfa;

@@ -19,7 +19,8 @@ pub async fn create_app() -> anyhow::Result<Router> {
         .merge(routes::departments::create_route())
         .merge(routes::majors::create_route())
         .merge(routes::managers::create_route())
-        .merge(routes::students::create_route());
+        .merge(routes::students::create_route())
+        .merge(routes::user_mfa::route::create_route());
 
     // Add Swagger UI
     if APP_CONFIG.swagger_enabled {

@@ -5,6 +5,7 @@ pub use super::document_type::Entity as DocumentType;
 pub use super::documents::Entity as Documents;
 pub use super::major::Entity as Major;
 pub use super::migrations::Entity as Migrations;
+pub use super::otp_verify::Entity as OtpVerify;
 pub use super::user::Entity as User;
 pub use super::user_major::Entity as UserMajor;
 pub use super::user_mfa::Entity as UserMfa;

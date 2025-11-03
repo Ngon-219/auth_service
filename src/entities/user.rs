@@ -29,10 +29,6 @@ pub struct Model {
     pub create_at: DateTime,
     pub update_at: DateTime,
     pub role: RoleEnum,
-    pub blockchain_sync_status: String,
-    pub blockchain_sync_error: Option<String>,
-    pub blockchain_tx_hash: Option<String>,
-    pub last_sync_attempt: Option<DateTime>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveColumn)]
@@ -50,10 +46,6 @@ pub enum Column {
     CreateAt,
     UpdateAt,
     Role,
-    BlockchainSyncStatus,
-    BlockchainSyncError,
-    BlockchainTxHash,
-    LastSyncAttempt,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DerivePrimaryKey)]
@@ -70,6 +62,8 @@ impl PrimaryKeyTrait for PrimaryKey {
 
 #[derive(Copy, Clone, Debug, EnumIter)]
 pub enum Relation {
+    DocumentType,
+    OtpVerify,
     UserMajor,
     UserMfa,
     Wallet,
@@ -92,10 +86,6 @@ impl ColumnTrait for Column {
             Self::CreateAt => ColumnType::DateTime.def(),
             Self::UpdateAt => ColumnType::DateTime.def(),
             Self::Role => RoleEnum::db_type().get_column_type().to_owned().def(),
-            Self::BlockchainSyncStatus => ColumnType::String(StringLen::None).def(),
-            Self::BlockchainSyncError => ColumnType::Text.def().null(),
-            Self::BlockchainTxHash => ColumnType::String(StringLen::None).def().null(),
-            Self::LastSyncAttempt => ColumnType::DateTime.def().null(),
         }
     }
 }
@@ -103,10 +93,24 @@ impl ColumnTrait for Column {
 impl RelationTrait for Relation {
     fn def(&self) -> RelationDef {
         match self {
+            Self::DocumentType => Entity::has_many(super::document_type::Entity).into(),
+            Self::OtpVerify => Entity::has_many(super::otp_verify::Entity).into(),
             Self::UserMajor => Entity::has_many(super::user_major::Entity).into(),
             Self::UserMfa => Entity::has_one(super::user_mfa::Entity).into(),
             Self::Wallet => Entity::has_one(super::wallet::Entity).into(),
         }
+    }
+}
+
+impl Related<super::document_type::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::DocumentType.def()
+    }
+}
+
+impl Related<super::otp_verify::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::OtpVerify.def()
     }
 }
 

@@ -8,34 +8,40 @@ pub struct Entity;
 
 impl EntityName for Entity {
     fn table_name(&self) -> &str {
-        "document_type"
+        "otp_verify"
     }
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveModel, DeriveActiveModel, Eq, Serialize, Deserialize)]
 pub struct Model {
     #[serde(skip_deserializing)]
-    pub document_type_id: Uuid,
-    pub document_type_name: String,
-    pub description: Option<String>,
+    pub otp_id: Uuid,
+    pub user_id: Uuid,
+    pub otp_code: String,
+    pub email: String,
+    pub purpose: String,
+    pub is_verified: bool,
+    pub expires_at: DateTime,
     pub created_at: DateTime,
     pub updated_at: DateTime,
-    pub created_by: Option<Uuid>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveColumn)]
 pub enum Column {
-    DocumentTypeId,
-    DocumentTypeName,
-    Description,
+    OtpId,
+    UserId,
+    OtpCode,
+    Email,
+    Purpose,
+    IsVerified,
+    ExpiresAt,
     CreatedAt,
     UpdatedAt,
-    CreatedBy,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DerivePrimaryKey)]
 pub enum PrimaryKey {
-    DocumentTypeId,
+    OtpId,
 }
 
 impl PrimaryKeyTrait for PrimaryKey {
@@ -47,7 +53,6 @@ impl PrimaryKeyTrait for PrimaryKey {
 
 #[derive(Copy, Clone, Debug, EnumIter)]
 pub enum Relation {
-    Documents,
     User,
 }
 
@@ -55,12 +60,15 @@ impl ColumnTrait for Column {
     type EntityName = Entity;
     fn def(&self) -> ColumnDef {
         match self {
-            Self::DocumentTypeId => ColumnType::Uuid.def(),
-            Self::DocumentTypeName => ColumnType::String(StringLen::None).def().unique(),
-            Self::Description => ColumnType::Text.def().null(),
+            Self::OtpId => ColumnType::Uuid.def(),
+            Self::UserId => ColumnType::Uuid.def(),
+            Self::OtpCode => ColumnType::String(StringLen::None).def(),
+            Self::Email => ColumnType::String(StringLen::None).def(),
+            Self::Purpose => ColumnType::String(StringLen::None).def(),
+            Self::IsVerified => ColumnType::Boolean.def(),
+            Self::ExpiresAt => ColumnType::DateTime.def(),
             Self::CreatedAt => ColumnType::DateTime.def(),
             Self::UpdatedAt => ColumnType::DateTime.def(),
-            Self::CreatedBy => ColumnType::Uuid.def().null(),
         }
     }
 }
@@ -68,18 +76,11 @@ impl ColumnTrait for Column {
 impl RelationTrait for Relation {
     fn def(&self) -> RelationDef {
         match self {
-            Self::Documents => Entity::has_many(super::documents::Entity).into(),
             Self::User => Entity::belongs_to(super::user::Entity)
-                .from(Column::CreatedBy)
+                .from(Column::UserId)
                 .to(super::user::Column::UserId)
                 .into(),
         }
-    }
-}
-
-impl Related<super::documents::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Documents.def()
     }
 }
 
