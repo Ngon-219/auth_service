@@ -40,7 +40,9 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!("Continuing without admin user initialization...");
     }
 
+    eprintln!("🚀 About to create app...");
     let app = app::create_app().await?;
+    eprintln!("✅ App created successfully!");
 
     let http_address = format!("0.0.0.0:{}", APP_CONFIG.port);
 

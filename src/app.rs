@@ -2,7 +2,9 @@ use crate::api_docs::ApiDoc;
 use crate::config::APP_CONFIG;
 use crate::routes;
 use crate::routes::health::route::create_route;
+use crate::middleware::http_logger::http_logger;
 use axum::Router;
+use axum::middleware;
 use http::header;
 use std::sync::Arc;
 use tower::ServiceBuilder;
@@ -32,6 +34,13 @@ pub async fn create_app() -> anyhow::Result<Router> {
     // Apply middleware
     let sensitive_headers: Arc<[_]> = vec![header::AUTHORIZATION, header::COOKIE].into();
 
+    // Axum middleware (middleware::from_fn) must be applied separately from ServiceBuilder
+    // ServiceBuilder only works with Tower layers, not Axum middleware
+    eprintln!("🔧 Applying HTTP logger middleware to router...");
+    let router = router.layer(middleware::from_fn(http_logger));
+    eprintln!("✅ HTTP logger middleware applied successfully!");
+    
+    // Apply Tower middleware stack
     let middleware = ServiceBuilder::new()
         .layer(PropagateHeaderLayer::new(header::HeaderName::from_static(
             "x-request-id",

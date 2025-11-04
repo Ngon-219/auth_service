@@ -56,4 +56,7 @@ pub struct Config {
 
     #[clap(long, env, default_value = "redis://127.0.0.1:6379")]
     pub redis_url: String,
+
+    #[clap(long, env, default_value = "local")]
+    pub app_env: String,
 }
