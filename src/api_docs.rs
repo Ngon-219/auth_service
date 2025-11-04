@@ -38,6 +38,7 @@ use utoipa::openapi::security::SecurityScheme;
         crate::routes::students::route::check_student_active,
         crate::routes::students::route::get_system_info,
         crate::routes::user_mfa::route::req_enable_mfa,
+        crate::routes::user_mfa::route::enable_mfa,
     ),
     components(
         schemas(
@@ -71,6 +72,9 @@ use utoipa::openapi::security::SecurityScheme;
             crate::routes::students::dto::StudentStatusResponse,
             crate::routes::students::dto::StudentIdResponse,
             crate::routes::students::dto::SystemInfoResponse,
+            crate::routes::user_mfa::dto::EnableMfaRequestDto,
+            crate::routes::user_mfa::dto::EnableMfaResponseDto,
+            crate::routes::user_mfa::dto::ReqEnableMfaResponseDto,
             crate::entities::sea_orm_active_enums::RoleEnum,
         ),
     ),
@@ -84,6 +88,7 @@ use utoipa::openapi::security::SecurityScheme;
         (name = "Managers", description = "Manager management endpoints"),
         (name = "Students", description = "Student information endpoints"),
         (name = "System", description = "System information endpoints"),
+        (name = "security-settings", description = "Security settings and MFA endpoints"),
         (name = "health", description = "Health check endpoints")
     ),
 )]

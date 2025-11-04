@@ -24,6 +24,7 @@ pub struct Model {
     pub tx_hash: Option<String>,
     pub contract_address: String,
     pub ipfs_hash: Option<String>,
+    pub pdf_ipfs_hash: Option<String>,
     pub document_hash: Option<String>,
     pub metadata: Option<Json>,
     pub status: String,
@@ -32,7 +33,6 @@ pub struct Model {
     pub verified_at: Option<DateTime>,
     pub created_at: DateTime,
     pub updated_at: DateTime,
-    pub pdf_ipfs_hash: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveColumn)]
@@ -46,6 +46,7 @@ pub enum Column {
     TxHash,
     ContractAddress,
     IpfsHash,
+    PdfIpfsHash,
     DocumentHash,
     Metadata,
     Status,
@@ -54,7 +55,6 @@ pub enum Column {
     VerifiedAt,
     CreatedAt,
     UpdatedAt,
-    PdfIpfsHash,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DerivePrimaryKey)]
@@ -87,6 +87,7 @@ impl ColumnTrait for Column {
             Self::TxHash => ColumnType::String(StringLen::N(66u32)).def().null(),
             Self::ContractAddress => ColumnType::String(StringLen::N(42u32)).def(),
             Self::IpfsHash => ColumnType::String(StringLen::None).def().null(),
+            Self::PdfIpfsHash => ColumnType::String(StringLen::None).def().null(),
             Self::DocumentHash => ColumnType::String(StringLen::N(66u32)).def().null(),
             Self::Metadata => ColumnType::JsonBinary.def().null(),
             Self::Status => ColumnType::String(StringLen::None).def(),
@@ -95,7 +96,6 @@ impl ColumnTrait for Column {
             Self::VerifiedAt => ColumnType::DateTime.def().null(),
             Self::CreatedAt => ColumnType::DateTime.def(),
             Self::UpdatedAt => ColumnType::DateTime.def(),
-            Self::PdfIpfsHash => ColumnType::String(StringLen::None).def().null(),
         }
     }
 }

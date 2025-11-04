@@ -4,6 +4,11 @@ use aes_gcm::{
 };
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine};
+use aes::cipher::block_padding::Pkcs7;
+use aes::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
+use anyhow::anyhow;
+use rand::Rng;
+use scrypt::{scrypt, Params};
 
 const NONCE_SIZE: usize = 12; // 96 bits for AES-GCM
 
@@ -59,6 +64,72 @@ pub fn decrypt_private_key(encrypted_data: &str, encryption_key: &str) -> Result
         .map_err(|_| anyhow::anyhow!("Failed to decrypt private key"))?;
 
     String::from_utf8(plaintext).context("Failed to convert decrypted data to string")
+}
+pub struct RsaAes {}
+
+impl RsaAes {
+    pub fn aes256_encrypt(data: &[u8], key: &[u8; 32], iv: &[u8; 16]) -> anyhow::Result<Vec<u8>> {
+        let result = cbc::Encryptor::<aes::Aes256>::new(&(*key).into(), &(*iv).into())
+            .encrypt_padded_vec_mut::<Pkcs7>(data);
+        Ok(result)
+    }
+
+    pub fn _aes256_decrypt(data: &[u8], key: &[u8; 32], iv: &[u8; 16]) -> anyhow::Result<Vec<u8>> {
+        let result = cbc::Decryptor::<aes::Aes256>::new(&(*key).into(), &(*iv).into())
+            .decrypt_padded_vec_mut::<Pkcs7>(data)?;
+        Ok(result)
+    }
+}
+
+pub fn decrypt(encryption_key: &str, encrypted_text: &str) -> anyhow::Result<String> {
+    let encryption_key_bytes = encryption_key.as_bytes();
+    let encrypted_bytes = general_purpose::STANDARD.decode(encrypted_text)?;
+
+    if encrypted_bytes.len() < 32 {
+        return Err(anyhow!("Invalid encrypted data length"));
+    }
+
+    let salt: &[u8; 16] = &encrypted_bytes[0..16].try_into()?;
+    let iv: &[u8; 16] = &encrypted_bytes[encrypted_bytes.len() - 16..].try_into()?;
+    let encrypted_data = &encrypted_bytes[16..encrypted_bytes.len() - 16];
+
+    let params = Params::new(14, 8, 1, 32)
+        .map_err(|err| anyhow!("[decrypt] err={:?}", err))?;
+
+    let mut key = [0u8; 32];
+    scrypt(encryption_key_bytes, salt, &params, &mut key)
+        .map_err(|err| anyhow!("[decrypt] err={:?}", err))?;
+
+    let decipher_bytes = RsaAes::_aes256_decrypt(encrypted_data, &key, iv)?;
+    let decipher_string = String::from_utf8(decipher_bytes)?;
+    Ok(decipher_string)
+}
+
+
+pub fn encrypt(encryption_key: &str, plain_text: &str) -> anyhow::Result<String> {
+    let encryption_key_bytes = encryption_key.as_bytes();
+    let mut salt = [0u8; 16];
+    rand::rng().fill(&mut salt);
+
+    let params = Params::new(14, 8, 1, 32)
+        .map_err(|err| anyhow!("[encrypt] err={:?}", err))?;
+
+    let mut key = [0u8; 32];
+    scrypt(encryption_key_bytes, &salt, &params, &mut key)
+        .map_err(|err| anyhow!("[encrypt] err={:?}", err))?;
+
+    let mut iv = [0u8; 16];
+    rand::rng().fill(&mut iv);
+    let encrypted_data = plain_text.as_bytes();
+    let cipher_bytes = RsaAes::aes256_encrypt(encrypted_data, &key, &iv)?;
+
+    let mut result = Vec::new();
+    result.extend_from_slice(&salt);
+    result.extend_from_slice(&cipher_bytes);
+    result.extend_from_slice(&iv);
+
+    let cipher_base64_string = general_purpose::STANDARD.encode(&result);
+    Ok(cipher_base64_string)
 }
 
 #[cfg(test)]

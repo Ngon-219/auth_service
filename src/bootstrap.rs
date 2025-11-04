@@ -8,14 +8,12 @@ use crate::config::APP_CONFIG;
 use crate::entities::{sea_orm_active_enums::RoleEnum, user, wallet};
 use crate::utils::encryption::encrypt_private_key;
 
-/// Initialize default admin user if not exists
 pub async fn initialize_admin_user(db: &DatabaseConnection) -> Result<()> {
-    const ADMIN_EMAIL: &str = "admin@system.local";
-    const DEFAULT_PASSWORD: &str = "Admin@123456"; // Change this in production!
+    let admin_email: &str = &APP_CONFIG.admin_email;
+    let default_password: &str = &APP_CONFIG.admin_password;
 
-    // Check if admin already exists
     let existing_admin = user::Entity::find()
-        .filter(user::Column::Email.eq(ADMIN_EMAIL))
+        .filter(user::Column::Email.eq(admin_email))
         .one(db)
         .await
         .context("Failed to check existing admin")?;
@@ -27,7 +25,6 @@ pub async fn initialize_admin_user(db: &DatabaseConnection) -> Result<()> {
 
     tracing::info!("Creating default admin user...");
 
-    // Parse admin private key to get wallet address
     let admin_wallet: LocalWallet = APP_CONFIG
         .admin_private_key
         .parse()
@@ -39,21 +36,19 @@ pub async fn initialize_admin_user(db: &DatabaseConnection) -> Result<()> {
     let encrypted_private_key = encrypt_private_key(&private_key, &APP_CONFIG.encryption_key)
         .context("Failed to encrypt admin private key")?;
 
-    // Hash default password
-    let hashed_password = bcrypt::hash(DEFAULT_PASSWORD, bcrypt::DEFAULT_COST)
+    let hashed_password = bcrypt::hash(default_password, bcrypt::DEFAULT_COST)
         .context("Failed to hash admin password")?;
 
     let user_id = Uuid::new_v4();
     let wallet_id = Uuid::new_v4();
     let now = Utc::now().naive_utc();
 
-    // Create admin user
     let admin_user = user::ActiveModel {
         user_id: Set(user_id),
         first_name: Set("System".to_string()),
         last_name: Set("Administrator".to_string()),
         address: Set("System".to_string()),
-        email: Set(ADMIN_EMAIL.to_string()),
+        email: Set(admin_email.to_string()),
         password: Set(hashed_password),
         is_priority: Set(true),
         cccd: Set("ADMIN000000".to_string()),
@@ -90,8 +85,8 @@ pub async fn initialize_admin_user(db: &DatabaseConnection) -> Result<()> {
         .context("Failed to insert admin wallet")?;
 
     tracing::info!("✅ Admin user created successfully!");
-    tracing::info!("  Email: {}", ADMIN_EMAIL);
-    tracing::info!("  Password: {}", DEFAULT_PASSWORD);
+    tracing::info!("  Email: {}", admin_email);
+    tracing::info!("  Password: {}", default_password);
     tracing::info!("  Wallet: {}", wallet_address);
     tracing::warn!("⚠️  Please change the default password after first login!");
 

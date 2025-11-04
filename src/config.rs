@@ -1,6 +1,8 @@
 use clap::Parser;
 use once_cell::sync::Lazy;
 
+pub const OTP_ISSUER: &str = "NGON";
+
 pub static APP_CONFIG: Lazy<Config> = Lazy::new(Config::parse);
 
 #[derive(Debug, Parser, Clone)]
@@ -34,4 +36,10 @@ pub struct Config {
 
     #[clap(long, env)]
     pub rabbitmq_uri: String,
+
+    #[clap(long, env)]
+    pub admin_email: String,
+
+    #[clap(long, env)]
+    pub admin_password: String,
 }

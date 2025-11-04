@@ -25,6 +25,13 @@ pub struct DisableMfaResponseDto {
     pub message: String,
 }
 
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct EnableMfaRequestDto {
+    pub otp_code: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EnableMfaResponseDto {
