@@ -70,10 +70,10 @@ pub async fn initialize_admin_user(db: &DatabaseConnection) -> Result<()> {
         user_id: Set(user_id),
         address: Set(wallet_address.clone()),
         private_key: Set(encrypted_private_key),
-        chain_type: Set("ethereum".to_string()),
+        chain_type: Set(crate::config::APP_CONFIG.chain_type.clone()),
         public_key: Set(wallet_address.clone()),
         status: Set("active".to_string()),
-        network_id: Set("11155111".to_string()), // Sepolia testnet
+        network_id: Set(crate::config::APP_CONFIG.chain_id.clone()),
         last_used_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),

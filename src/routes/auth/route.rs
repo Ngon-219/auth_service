@@ -1,9 +1,8 @@
 use axum::{Json, Router, http::StatusCode, routing::post};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use super::dto::{LoginRequest, LoginResponse};
-use crate::entities::{sea_orm_active_enums::RoleEnum, user};
-use crate::static_service::DATABASE_CONNECTION;
+use crate::entities::sea_orm_active_enums::RoleEnum;
+use crate::repositories::UserRepository;
 use do_an_lib::jwt::JwtManager;
 use do_an_lib::structs::token_claims::UserRole;
 
@@ -26,14 +25,10 @@ pub fn create_route() -> Router {
 pub async fn login(
     Json(payload): Json<LoginRequest>,
 ) -> Result<(StatusCode, Json<LoginResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
 
     // Find user by email
-    let user_info = user::Entity::find()
-        .filter(user::Column::Email.eq(&payload.email))
-        .one(db)
+    let user_info = user_repo.find_by_email(&payload.email)
         .await
         .map_err(|e| {
             (

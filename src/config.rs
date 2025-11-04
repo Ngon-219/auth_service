@@ -42,4 +42,10 @@ pub struct Config {
 
     #[clap(long, env)]
     pub admin_password: String,
+
+    #[clap(long, env)]
+    pub chain_type: String,
+
+    #[clap(long, env)]
+    pub chain_id: String,
 }

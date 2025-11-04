@@ -4,7 +4,7 @@ use super::dto::{
 };
 use crate::blockchain::get_user_blockchain_service;
 use crate::extractor::AuthClaims;
-use crate::static_service::DATABASE_CONNECTION;
+use crate::repositories::UserRepository;
 use do_an_lib::structs::token_claims::UserRole;
 use axum::{
     Json, Router,
@@ -48,16 +48,14 @@ pub async fn add_manager(
         ));
     }
 
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
     let user_id = Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Invalid user_id: {}", e),
         )
     })?;
-
+    let db = user_repo.get_connection();
     let blockchain = get_user_blockchain_service(db, &user_id)
         .await
         .map_err(|e| {
@@ -112,10 +110,7 @@ pub async fn remove_manager(
         ));
     }
 
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
-
+    let user_repo = UserRepository::new();
     let user_id = Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -123,6 +118,7 @@ pub async fn remove_manager(
         )
     })?;
 
+    let db = user_repo.get_connection();
     let blockchain = get_user_blockchain_service(db, &user_id)
         .await
         .map_err(|e| {
@@ -164,10 +160,7 @@ pub async fn remove_manager(
 pub async fn get_all_managers(
     AuthClaims(auth_claims): AuthClaims,
 ) -> Result<(StatusCode, Json<ManagerListResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
-
+    let user_repo = UserRepository::new();
     let user_id = Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -175,6 +168,7 @@ pub async fn get_all_managers(
         )
     })?;
 
+    let db = user_repo.get_connection();
     let blockchain = get_user_blockchain_service(db, &user_id)
         .await
         .map_err(|e| {
@@ -223,17 +217,14 @@ pub async fn check_manager(
     AuthClaims(auth_claims): AuthClaims,
     Json(payload): Json<CheckManagerRequest>,
 ) -> Result<(StatusCode, Json<ManagerResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
-
+    let user_repo = UserRepository::new();
     let user_id = uuid::Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Invalid user_id: {}", e),
         )
     })?;
-
+    let db = user_repo.get_connection();
     let blockchain = get_user_blockchain_service(db, &user_id)
         .await
         .map_err(|e| {

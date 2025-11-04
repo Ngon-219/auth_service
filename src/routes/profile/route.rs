@@ -1,10 +1,9 @@
 use super::dto::ProfileResponse;
 use crate::blockchain::get_user_blockchain_service;
-use crate::entities::{sea_orm_active_enums::RoleEnum, user, wallet};
+use crate::entities::sea_orm_active_enums::RoleEnum;
 use crate::extractor::AuthClaims;
-use crate::static_service::DATABASE_CONNECTION;
+use crate::repositories::{UserRepository, WalletRepository};
 use axum::{Json, Router, http::StatusCode, routing::get};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 pub fn create_route() -> Router {
@@ -29,9 +28,8 @@ pub fn create_route() -> Router {
 pub async fn get_profile(
     AuthClaims(auth_claims): AuthClaims,
 ) -> Result<(StatusCode, Json<ProfileResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
+    let wallet_repo = WalletRepository::new();
 
     let user_id_uuid = Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
@@ -41,9 +39,7 @@ pub async fn get_profile(
     })?;
 
     // Get user info from DB
-    let user_info = user::Entity::find()
-        .filter(user::Column::UserId.eq(user_id_uuid))
-        .one(db)
+    let user_info = user_repo.find_by_id(user_id_uuid)
         .await
         .map_err(|e| {
             (
@@ -54,9 +50,7 @@ pub async fn get_profile(
         .ok_or_else(|| (StatusCode::NOT_FOUND, "User not found".to_string()))?;
 
     // Get wallet info
-    let wallet_info = wallet::Entity::find()
-        .filter(wallet::Column::UserId.eq(user_id_uuid))
-        .one(db)
+    let wallet_info = wallet_repo.find_by_user_id(user_id_uuid)
         .await
         .map_err(|e| {
             (
@@ -67,6 +61,7 @@ pub async fn get_profile(
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Wallet not found".to_string()))?;
 
     // Create blockchain service with user's private key
+    let db = user_repo.get_connection();
     let user_blockchain = get_user_blockchain_service(db, &user_id_uuid)
         .await
         .map_err(|e| {

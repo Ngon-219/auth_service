@@ -11,7 +11,7 @@ use super::dto::{
 };
 use crate::blockchain::get_user_blockchain_service;
 use crate::extractor::AuthClaims;
-use crate::static_service::DATABASE_CONNECTION;
+use crate::repositories::UserRepository;
 use do_an_lib::structs::token_claims::UserRole;
 
 pub fn create_route() -> Router {
@@ -53,15 +53,14 @@ pub async fn get_student_by_id(
     AuthClaims(auth_claims): AuthClaims,
     Path(student_id): Path<u64>,
 ) -> Result<(StatusCode, Json<StudentInfoResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
     let user_id = uuid::Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Invalid user_id: {}", e),
         )
     })?;
+    let db = user_repo.get_connection();
     let blockchain = get_user_blockchain_service(db, &user_id)
         .await
         .map_err(|e| {
@@ -108,15 +107,14 @@ pub async fn get_student_id_by_address(
     AuthClaims(auth_claims): AuthClaims,
     Json(payload): Json<StudentAddressRequest>,
 ) -> Result<(StatusCode, Json<StudentIdResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
     let user_id = uuid::Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Invalid user_id: {}", e),
         )
     })?;
+    let db = user_repo.get_connection();
     let blockchain = get_user_blockchain_service(db, &user_id)
         .await
         .map_err(|e| {
@@ -162,15 +160,14 @@ pub async fn get_student_id_by_code(
     AuthClaims(auth_claims): AuthClaims,
     Json(payload): Json<StudentCodeRequest>,
 ) -> Result<(StatusCode, Json<StudentIdResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
     let user_id = uuid::Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Invalid user_id: {}", e),
         )
     })?;
+    let db = user_repo.get_connection();
     let blockchain = get_user_blockchain_service(db, &user_id)
         .await
         .map_err(|e| {
@@ -227,15 +224,14 @@ pub async fn deactivate_student(
         ));
     }
 
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
     let user_id = uuid::Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Invalid user_id: {}", e),
         )
     })?;
+    let db = user_repo.get_connection();
     let blockchain = get_user_blockchain_service(db, &user_id)
         .await
         .map_err(|e| {
@@ -291,15 +287,14 @@ pub async fn activate_student(
         ));
     }
 
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
     let user_id = uuid::Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Invalid user_id: {}", e),
         )
     })?;
+    let db = user_repo.get_connection();
     let blockchain = get_user_blockchain_service(db, &user_id)
         .await
         .map_err(|e| {
@@ -340,15 +335,14 @@ pub async fn check_student_active(
     AuthClaims(auth_claims): AuthClaims,
     Json(payload): Json<StudentAddressRequest>,
 ) -> Result<(StatusCode, Json<StudentStatusResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
     let user_id = uuid::Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Invalid user_id: {}", e),
         )
     })?;
+    let db = user_repo.get_connection();
     let blockchain = get_user_blockchain_service(db, &user_id)
         .await
         .map_err(|e| {
@@ -394,15 +388,14 @@ pub async fn check_student_active(
 pub async fn get_system_info(
     AuthClaims(auth_claims): AuthClaims,
 ) -> Result<(StatusCode, Json<SystemInfoResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
     let user_id = uuid::Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Invalid user_id: {}", e),
         )
     })?;
+    let db = user_repo.get_connection();
     let blockchain = get_user_blockchain_service(db, &user_id)
         .await
         .map_err(|e| {

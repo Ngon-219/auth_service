@@ -23,9 +23,12 @@ pub fn generate_random_string(length: usize) -> String {
         .collect::<String>()
 }
 
+#[allow(dead_code)]
 pub fn fill_random_bytes(buffer: &mut [u8]) {
     rand::rng().fill_bytes(buffer);
 }
+
+#[allow(dead_code)]
 pub fn generate_random_bytes(length: usize) -> Vec<u8> {
     let mut bytes = vec![0u8; length];
     fill_random_bytes(&mut bytes);

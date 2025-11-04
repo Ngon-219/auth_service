@@ -4,14 +4,11 @@ use axum::{
     http::StatusCode,
     routing::{delete, get, post, put},
 };
-use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
 
 use super::dto::{CreateMajorRequest, MajorListResponse, MajorResponse, UpdateMajorRequest};
-use crate::entities::major;
 use crate::extractor::AuthClaims;
-use crate::static_service::DATABASE_CONNECTION;
+use crate::repositories::{MajorRepository, MajorUpdate};
 use do_an_lib::structs::token_claims::UserRole;
 
 pub fn create_route() -> Router {
@@ -48,23 +45,17 @@ pub async fn create_major(
             "Only admin or manager can create majors".to_string(),
         ));
     }
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
-
+    let major_repo = MajorRepository::new();
     let major_id = Uuid::new_v4();
-    let now = Utc::now().naive_utc();
 
-    let major_model = major::ActiveModel {
-        major_id: Set(major_id),
-        name: Set(payload.name),
-        founding_date: Set(payload.founding_date),
-        department_id: Set(payload.department_id),
-        create_at: Set(now),
-        update_at: Set(now),
-    };
-
-    let major = major_model.insert(db).await.map_err(|e| {
+    let major = major_repo.create(
+        major_id,
+        payload.name,
+        payload.founding_date,
+        payload.department_id,
+    )
+    .await
+    .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to create major: {}", e),
@@ -97,11 +88,9 @@ pub async fn create_major(
 pub async fn get_all_majors(
     AuthClaims(_auth_claims): AuthClaims,
 ) -> Result<(StatusCode, Json<MajorListResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let major_repo = MajorRepository::new();
 
-    let majors = major::Entity::find().all(db).await.map_err(|e| {
+    let majors = major_repo.find_all().await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to get majors: {}", e),
@@ -145,13 +134,9 @@ pub async fn get_major(
     AuthClaims(_auth_claims): AuthClaims,
     Path(major_id): Path<Uuid>,
 ) -> Result<(StatusCode, Json<MajorResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let major_repo = MajorRepository::new();
 
-    let major = major::Entity::find()
-        .filter(major::Column::MajorId.eq(major_id))
-        .one(db)
+    let major = major_repo.find_by_id(major_id)
         .await
         .map_err(|e| {
             (
@@ -203,36 +188,15 @@ pub async fn update_major(
         ));
     }
     
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let major_repo = MajorRepository::new();
 
-    let major = major::Entity::find()
-        .filter(major::Column::MajorId.eq(major_id))
-        .one(db)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to find major: {}", e),
-            )
-        })?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "Major not found".to_string()))?;
+    let updates = MajorUpdate {
+        name: payload.name,
+        founding_date: payload.founding_date,
+        department_id: payload.department_id,
+    };
 
-    let mut active_model: major::ActiveModel = major.into();
-
-    if let Some(name) = payload.name {
-        active_model.name = Set(name);
-    }
-    if let Some(founding_date) = payload.founding_date {
-        active_model.founding_date = Set(founding_date);
-    }
-    if let Some(department_id) = payload.department_id {
-        active_model.department_id = Set(Some(department_id));
-    }
-    active_model.update_at = Set(Utc::now().naive_utc());
-
-    let updated = active_model.update(db).await.map_err(|e| {
+    let updated = major_repo.update(major_id, updates).await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to update major: {}", e),
@@ -279,24 +243,9 @@ pub async fn delete_major(
         ));
     }
     
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let major_repo = MajorRepository::new();
 
-    let major = major::Entity::find()
-        .filter(major::Column::MajorId.eq(major_id))
-        .one(db)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to find major: {}", e),
-            )
-        })?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "Major not found".to_string()))?;
-
-    let active_model: major::ActiveModel = major.into();
-    active_model.delete(db).await.map_err(|e| {
+    major_repo.delete(major_id).await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to delete major: {}", e),

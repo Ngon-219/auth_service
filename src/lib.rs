@@ -7,6 +7,7 @@ pub mod entities;
 pub mod extractor;
 pub mod grpc;
 pub mod middleware;
+pub mod repositories;
 pub mod routes;
 pub mod static_service;
 pub mod utils;

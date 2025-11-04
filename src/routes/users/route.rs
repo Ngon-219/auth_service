@@ -6,7 +6,7 @@ use axum::{
 };
 use calamine::{DataType, Reader, Xlsx, open_workbook_from_rs};
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{ActiveModelTrait, Set, ColumnTrait, QueryFilter, EntityTrait};
 use std::io::Cursor;
 use uuid::Uuid;
 use do_an_lib::structs::token_claims::UserRole;
@@ -17,12 +17,12 @@ use super::dto::{
 };
 use crate::blockchain::{BlockchainService, get_admin_blockchain_service, get_user_private_key};
 use crate::entities::sea_orm_active_enums::RoleEnum;
-use crate::entities::{user, user_major, wallet};
+use crate::entities::{user_major};
 use crate::extractor::AuthClaims;
 use crate::middleware::permission;
-use crate::static_service::DATABASE_CONNECTION;
 use crate::utils::encryption::encrypt_private_key;
 use crate::config::APP_CONFIG;
+use crate::repositories::{UserRepository, WalletRepository, user_repository::UserUpdate};
 
 pub fn create_route() -> Router {
     Router::new()
@@ -53,15 +53,15 @@ pub async fn create_user(
     AuthClaims(auth_claims): AuthClaims,
     Json(payload): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<UserResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
+    let wallet_repo = WalletRepository::new();
     let user_uuid = Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Invalid user_id: {}", e),
         )
     })?;
+    let db = user_repo.get_connection();
     let user_private_key = get_user_private_key(db, &user_uuid).await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -103,46 +103,39 @@ pub async fn create_user(
 
     let user_id = Uuid::new_v4();
     let wallet_id = Uuid::new_v4();
-    let now = Utc::now().naive_utc();
 
-    let user_model = user::ActiveModel {
-        user_id: Set(user_id),
-        first_name: Set(payload.first_name.clone()),
-        last_name: Set(payload.last_name.clone()),
-        address: Set(payload.address.clone()),
-        email: Set(payload.email.clone()),
-        password: Set(hashed_password),
-        is_priority: Set(false),
-        cccd: Set(payload.cccd.clone()),
-        phone_number: Set(payload.phone_number.clone()),
-        is_first_login: Set(true),
-        create_at: Set(now),
-        update_at: Set(now),
-        role: Set(payload.role.clone()),
-    };
-
-    let user = user_model.insert(db).await.map_err(|e| {
+    let user = user_repo.create(
+        user_id,
+        payload.first_name.clone(),
+        payload.last_name.clone(),
+        payload.address.clone(),
+        payload.email.clone(),
+        hashed_password,
+        payload.cccd.clone(),
+        payload.phone_number.clone(),
+        payload.role.clone(),
+        false, // is_priority
+    )
+    .await
+    .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to create user: {}", e),
         )
     })?;
 
-    let wallet_model = wallet::ActiveModel {
-        wallet_id: Set(wallet_id),
-        user_id: Set(user_id),
-        address: Set(wallet_address.clone()),
-        private_key: Set(encrypted_private_key.clone()),
-        chain_type: Set("ethereum".to_string()),
-        public_key: Set(wallet_address.clone()),
-        status: Set("active".to_string()),
-        network_id: Set("1".to_string()), // Mainnet by default
-        last_used_at: Set(None),
-        created_at: Set(now),
-        updated_at: Set(now),
-    };
-
-    wallet_model.insert(db).await.map_err(|e| {
+    wallet_repo.create(
+        wallet_id,
+        user_id,
+        wallet_address.clone(),
+        encrypted_private_key.clone(),
+        APP_CONFIG.chain_type.clone(),
+        wallet_address.clone(),
+        "active".to_string(),
+        APP_CONFIG.chain_id.clone(),
+    )
+    .await
+    .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to create wallet: {}", e),
@@ -202,6 +195,8 @@ pub async fn create_user(
 
     // Create user-major relationships
     if let Some(major_ids) = payload.major_ids {
+        let db = user_repo.get_connection();
+        let now = Utc::now().naive_utc();
         for major_id in major_ids.iter() {
             let relationship_model = user_major::ActiveModel {
                 user_id: Set(user_id),
@@ -248,10 +243,8 @@ pub async fn create_user(
 pub async fn create_users_bulk(
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<BulkUserResponse>), (StatusCode, String)> {
-    // Get DB and blockchain from global state
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
+    let wallet_repo = WalletRepository::new();
     let blockchain = get_admin_blockchain_service().await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -386,7 +379,6 @@ pub async fn create_users_bulk(
 
         let user_id = Uuid::new_v4();
         let wallet_id = Uuid::new_v4();
-        let now = Utc::now().naive_utc();
 
         let hashed_password = match bcrypt::hash(&user_data.password, bcrypt::DEFAULT_COST) {
             Ok(hash) => hash,
@@ -412,32 +404,6 @@ pub async fn create_users_bulk(
             }
         };
 
-        // Insert user into database
-        let user_model = user::ActiveModel {
-            user_id: Set(user_id),
-            first_name: Set(user_data.first_name.clone()),
-            last_name: Set(user_data.last_name.clone()),
-            address: Set(user_data.address.clone()),
-            email: Set(user_data.email.clone()),
-            password: Set(hashed_password),
-            is_priority: Set(false),
-            cccd: Set(user_data.cccd.clone()),
-            phone_number: Set(user_data.phone_number.clone()),
-            is_first_login: Set(true),
-            create_at: Set(now),
-            update_at: Set(now),
-            role: Set(role.clone()),
-        };
-
-        if let Err(e) = user_model.insert(db).await {
-            errors.push(BulkUserError {
-                row: 0,
-                email: user_data.email.clone(),
-                error: format!("Failed to create user: {}", e),
-            });
-            continue;
-        }
-        
         let encrypted_private_key = match encrypt_private_key(&wallet_private_key, &APP_CONFIG.encryption_key) {
             Ok(encrypted) => encrypted,
             Err(e) => {
@@ -449,22 +415,38 @@ pub async fn create_users_bulk(
                 continue;
             }
         };
-        
-        let wallet_model = wallet::ActiveModel {
-            wallet_id: Set(wallet_id),
-            user_id: Set(user_id),
-            address: Set(wallet_address.clone()),
-            private_key: Set(encrypted_private_key),
-            chain_type: Set("ethereum".to_string()),
-            public_key: Set(wallet_address.clone()),
-            status: Set("active".to_string()),
-            network_id: Set("1".to_string()),
-            last_used_at: Set(None),
-            created_at: Set(now),
-            updated_at: Set(now),
-        };
 
-        if let Err(e) = wallet_model.insert(db).await {
+        // Insert user into database
+        if let Err(e) = user_repo.create(
+            user_id,
+            user_data.first_name.clone(),
+            user_data.last_name.clone(),
+            user_data.address.clone(),
+            user_data.email.clone(),
+            hashed_password,
+            user_data.cccd.clone(),
+            user_data.phone_number.clone(),
+            role.clone(),
+            false, // is_priority
+        ).await {
+            errors.push(BulkUserError {
+                row: 0,
+                email: user_data.email.clone(),
+                error: format!("Failed to create user: {}", e),
+            });
+            continue;
+        }
+
+        if let Err(e) = wallet_repo.create(
+            wallet_id,
+            user_id,
+            wallet_address.clone(),
+            encrypted_private_key,
+            APP_CONFIG.chain_type.clone(),
+            wallet_address.clone(),
+            "active".to_string(),
+            APP_CONFIG.chain_id.clone(),
+        ).await {
             errors.push(BulkUserError {
                 row: 0,
                 email: user_data.email.clone(),
@@ -535,70 +517,33 @@ pub async fn get_all_users(
     AuthClaims(auth_claims): AuthClaims,
     Query(params): Query<UserQueryParams>,
 ) -> Result<(StatusCode, Json<UserListResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
+    let wallet_repo = WalletRepository::new();
 
     // Check permission: Admin or Manager
     permission::is_admin_or_manager(&auth_claims)?;
 
-    let mut query = user::Entity::find();
-
-    // If manager, only show students
-    if auth_claims.role == UserRole::MANAGER {
-        query = query.filter(user::Column::Role.eq(RoleEnum::Student));
-    }
-
-    // Filter by role if provided
-    if let Some(role) = &params.role {
-        query = query.filter(user::Column::Role.eq(role.clone()));
-    }
-
-    // Search by name or email
-    if let Some(search) = &params.search {
-        let search_pattern = format!("%{}%", search);
-        query = query.filter(
-            user::Column::FirstName
-                .contains(&search_pattern)
-                .or(user::Column::LastName.contains(&search_pattern))
-                .or(user::Column::Email.contains(&search_pattern)),
-        );
-    }
-
-    // Get total count
-    let total = query
-        .clone()
-        .count(db)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Database error: {}", e),
-            )
-        })?;
-
-    // Apply pagination
-    let offset = (params.page - 1) * params.page_size;
-    let users = query
-        .order_by_desc(user::Column::CreateAt)
-        .limit(params.page_size as u64)
-        .offset(offset as u64)
-        .all(db)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Database error: {}", e),
-            )
-        })?;
+    let manager_only_students = auth_claims.role == UserRole::MANAGER;
+    let (users, total) = user_repo.find_all_with_pagination(
+        params.page as u32,
+        params.page_size as u32,
+        params.role.clone(),
+        params.search.clone(),
+        manager_only_students,
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Database error: {}", e),
+        )
+    })?;
 
     // Convert to response DTOs
     let mut user_responses = Vec::new();
     for user_model in users {
         // Get wallet info
-        let wallet_info = wallet::Entity::find()
-            .filter(wallet::Column::UserId.eq(user_model.user_id))
-            .one(db)
+        let wallet_info = wallet_repo.find_by_user_id(user_model.user_id)
             .await
             .map_err(|e| {
                 (
@@ -608,6 +553,7 @@ pub async fn get_all_users(
             })?;
 
         // Get major IDs
+        let db = user_repo.get_connection();
         let major_relationships = user_major::Entity::find()
             .filter(user_major::Column::UserId.eq(user_model.user_id))
             .all(db)
@@ -674,32 +620,11 @@ pub async fn get_user_by_id(
     AuthClaims(auth_claims): AuthClaims,
     Path(user_id): Path<Uuid>,
 ) -> Result<(StatusCode, Json<UserDetailResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
 
-    // Get target user
-    let target_user = user::Entity::find_by_id(user_id)
-        .one(db)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Database error: {}", e),
-            )
-        })?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "User not found".to_string()))?;
-
-    // Check permission
+    // Check permission first
     let user_id_str = user_id.to_string();
     if auth_claims.role != UserRole::ADMIN {
-        // Manager can only see students
-        if auth_claims.role == UserRole::MANAGER && target_user.role != RoleEnum::Student {
-            return Err((
-                StatusCode::FORBIDDEN,
-                "Managers can only view student accounts".to_string(),
-            ));
-        }
         // Non-admin/manager can only see themselves
         if auth_claims.role != UserRole::MANAGER
             && auth_claims.user_id != user_id_str
@@ -711,34 +636,24 @@ pub async fn get_user_by_id(
         }
     }
 
-    // Get wallet info
-    let wallet_info = wallet::Entity::find()
-        .filter(wallet::Column::UserId.eq(user_id))
-        .one(db)
+    // Get user with wallet and majors
+    let (target_user, wallet_info, major_ids) = user_repo.get_user_with_wallet_and_majors(user_id)
         .await
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Database error: {}", e),
             )
-        })?;
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "User not found".to_string()))?;
 
-    // Get major IDs
-    let major_relationships = user_major::Entity::find()
-        .filter(user_major::Column::UserId.eq(user_id))
-        .all(db)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Database error: {}", e),
-            )
-        })?;
-
-    let major_ids = major_relationships
-        .into_iter()
-        .map(|m| m.major_id)
-        .collect();
+    // Manager can only see students
+    if auth_claims.role == UserRole::MANAGER && target_user.role != RoleEnum::Student {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Managers can only view student accounts".to_string(),
+        ));
+    }
 
     let response = UserDetailResponse {
         user_id: target_user.user_id,
@@ -782,13 +697,10 @@ pub async fn update_user(
     Path(user_id): Path<Uuid>,
     Json(payload): Json<UpdateUserRequest>,
 ) -> Result<(StatusCode, Json<UserDetailResponse>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
 
     // Get target user
-    let target_user = user::Entity::find_by_id(user_id)
-        .one(db)
+    let target_user = user_repo.find_by_id(user_id)
         .await
         .map_err(|e| {
             (
@@ -809,38 +721,18 @@ pub async fn update_user(
     // Check permission
     permission::can_modify_user(&auth_claims, &target_role)?;
 
-    let now = Utc::now().naive_utc();
-    let mut active_user: user::ActiveModel = target_user.into();
-
-    // Update fields if provided
-    if let Some(first_name) = payload.first_name {
-        active_user.first_name = Set(first_name);
-    }
-    if let Some(last_name) = payload.last_name {
-        active_user.last_name = Set(last_name);
-    }
-    if let Some(address) = payload.address {
-        active_user.address = Set(address);
-    }
-    if let Some(email) = payload.email {
-        active_user.email = Set(email);
-    }
-    if let Some(password) = payload.password {
-        let hashed = bcrypt::hash(&password, bcrypt::DEFAULT_COST).map_err(|e| {
+    let hashed_password = if let Some(password) = &payload.password {
+        Some(bcrypt::hash(password, bcrypt::DEFAULT_COST).map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to hash password: {}", e),
             )
-        })?;
-        active_user.password = Set(hashed);
-    }
-    if let Some(cccd) = payload.cccd {
-        active_user.cccd = Set(cccd);
-    }
-    if let Some(phone_number) = payload.phone_number {
-        active_user.phone_number = Set(phone_number);
-    }
-    if let Some(role) = payload.role {
+        })?)
+    } else {
+        None
+    };
+
+    if let Some(_role) = &payload.role {
         // Only admin can change roles
         if auth_claims.role != UserRole::ADMIN {
             return Err((
@@ -848,20 +740,33 @@ pub async fn update_user(
                 "Only admin can change user roles".to_string(),
             ));
         }
-        active_user.role = Set(role);
     }
 
-    active_user.update_at = Set(now);
+    let updates = UserUpdate {
+        first_name: payload.first_name.clone(),
+        last_name: payload.last_name.clone(),
+        address: payload.address.clone(),
+        email: payload.email.clone(),
+        password: hashed_password,
+        cccd: payload.cccd.clone(),
+        phone_number: payload.phone_number.clone(),
+        role: payload.role.clone(),
+        is_priority: None,
+        is_first_login: None,
+    };
 
-    let updated_user = active_user.update(db).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to update user: {}", e),
-        )
-    })?;
+    let updated_user = user_repo.update(user_id, updates)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to update user: {}", e),
+            )
+        })?;
 
     // Update major relationships if provided
     if let Some(major_ids) = payload.major_ids {
+        let db = user_repo.get_connection();
         // Delete existing relationships
         user_major::Entity::delete_many()
             .filter(user_major::Column::UserId.eq(user_id))
@@ -875,6 +780,7 @@ pub async fn update_user(
             })?;
 
         // Create new relationships
+        let now = Utc::now().naive_utc();
         for major_id in major_ids.iter() {
             let relationship = user_major::ActiveModel {
                 user_id: Set(user_id),
@@ -892,32 +798,15 @@ pub async fn update_user(
     }
 
     // Get updated user with full details
-    let wallet_info = wallet::Entity::find()
-        .filter(wallet::Column::UserId.eq(user_id))
-        .one(db)
+    let (_, wallet_info, major_ids) = user_repo.get_user_with_wallet_and_majors(user_id)
         .await
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Database error: {}", e),
             )
-        })?;
-
-    let major_relationships = user_major::Entity::find()
-        .filter(user_major::Column::UserId.eq(user_id))
-        .all(db)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Database error: {}", e),
-            )
-        })?;
-
-    let major_ids = major_relationships
-        .into_iter()
-        .map(|m| m.major_id)
-        .collect();
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "User not found".to_string()))?;
 
     let response = UserDetailResponse {
         user_id: updated_user.user_id,
@@ -959,13 +848,11 @@ pub async fn delete_user(
     AuthClaims(auth_claims): AuthClaims,
     Path(user_id): Path<Uuid>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
-    let db = DATABASE_CONNECTION
-        .get()
-        .expect("DATABASE_CONNECTION not set");
+    let user_repo = UserRepository::new();
+    let wallet_repo = WalletRepository::new();
 
     // Get target user
-    let target_user = user::Entity::find_by_id(user_id)
-        .one(db)
+    let target_user = user_repo.find_by_id(user_id)
         .await
         .map_err(|e| {
             (
@@ -986,22 +873,8 @@ pub async fn delete_user(
     // Check permission
     permission::can_modify_user(&auth_claims, &target_role)?;
 
-    // Delete user major relationships first (foreign key constraint)
-    user_major::Entity::delete_many()
-        .filter(user_major::Column::UserId.eq(user_id))
-        .exec(db)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to delete user majors: {}", e),
-            )
-        })?;
-
-    // Delete wallet
-    wallet::Entity::delete_many()
-        .filter(wallet::Column::UserId.eq(user_id))
-        .exec(db)
+    // Delete wallet first
+    wallet_repo.delete_by_user_id(user_id)
         .await
         .map_err(|e| {
             (
@@ -1010,9 +883,8 @@ pub async fn delete_user(
             )
         })?;
 
-    // Delete user
-    user::Entity::delete_by_id(user_id)
-        .exec(db)
+    // Delete user (this will cascade delete user_major relationships)
+    user_repo.delete(user_id)
         .await
         .map_err(|e| {
             (
