@@ -4,6 +4,7 @@ pub mod otp_verify_repository;
 pub mod wallet_repository;
 pub mod department_repository;
 pub mod major_repository;
+pub mod mfa_verify_result;
 
 pub use user_repository::UserRepository;
 pub use user_mfa_repository::UserMfaRepository;

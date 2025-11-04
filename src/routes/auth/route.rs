@@ -80,7 +80,9 @@ pub async fn login(
                 )
             })?;
 
-        let is_valid = mfa_repo.verify_mfa_code(&user_id_str, &authenticator_code)
+        use crate::repositories::mfa_verify_result::MfaVerifyResult;
+        
+        let verify_result = mfa_repo.verify_mfa_code(&user_id_str, &authenticator_code)
             .await
             .map_err(|e| {
                 (
@@ -89,11 +91,39 @@ pub async fn login(
                 )
             })?;
 
-        if !is_valid {
-            return Err((
-                StatusCode::UNAUTHORIZED,
-                "Invalid authenticator code".to_string(),
-            ));
+        match verify_result {
+            MfaVerifyResult::Success => {
+                // Continue with login
+            }
+            MfaVerifyResult::Locked { locked_until } => {
+                let message = if let Some(until) = locked_until {
+                    format!("MFA is locked until {} (too many failed attempts)", until)
+                } else {
+                    "MFA is locked due to too many failed attempts".to_string()
+                };
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    message,
+                ));
+            }
+            MfaVerifyResult::CodeAlreadyUsed => {
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    "MFA code has already been used".to_string(),
+                ));
+            }
+            MfaVerifyResult::InvalidCode => {
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    "Invalid authenticator code".to_string(),
+                ));
+            }
+            MfaVerifyResult::MfaNotEnabled => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "MFA is not enabled for this user".to_string(),
+                ));
+            }
         }
     }
 

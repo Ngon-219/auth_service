@@ -14,5 +14,8 @@ message VerifyMfaCodeRequest {
 
 message VerifyMfaCodeResponse {
     bool is_valid = 1;
+    string reason = 2;
+    string message = 3;
+    int64 locked_until = 4; // Unix timestamp, only set when locked
 }
 

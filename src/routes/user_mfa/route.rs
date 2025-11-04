@@ -263,7 +263,9 @@ pub async fn verify_mfa_code_test(
 ) -> Result<(StatusCode, Json<VerifyMfaCodeTestResponseDto>), (StatusCode, String)> {
     let mfa_repo = UserMfaRepository::new();
 
-    let is_valid = mfa_repo.verify_mfa_code(&claims.user_id, &body.authenticator_code)
+    use crate::repositories::mfa_verify_result::MfaVerifyResult;
+    
+    let result = mfa_repo.verify_mfa_code(&claims.user_id, &body.authenticator_code)
         .await
         .map_err(|e| {
             (
@@ -272,13 +274,46 @@ pub async fn verify_mfa_code_test(
             )
         })?;
 
+    let (is_valid, message, reason, locked_until) = match result {
+        MfaVerifyResult::Success => (
+            true,
+            "MFA code verified successfully".to_string(),
+            "success".to_string(),
+            None,
+        ),
+        MfaVerifyResult::Locked { locked_until } => (
+            false,
+            format!("MFA is locked{}", 
+                locked_until.map(|u| format!(" until {}", u)).unwrap_or_default()
+            ),
+            "locked".to_string(),
+            locked_until,
+        ),
+        MfaVerifyResult::CodeAlreadyUsed => (
+            false,
+            "MFA code has already been used".to_string(),
+            "code_already_used".to_string(),
+            None,
+        ),
+        MfaVerifyResult::InvalidCode => (
+            false,
+            "Invalid MFA code".to_string(),
+            "invalid_code".to_string(),
+            None,
+        ),
+        MfaVerifyResult::MfaNotEnabled => (
+            false,
+            "MFA is not enabled for this user".to_string(),
+            "mfa_not_enabled".to_string(),
+            None,
+        ),
+    };
+
     let response = VerifyMfaCodeTestResponseDto {
         is_valid,
-        message: if is_valid {
-            "MFA code is valid".to_string()
-        } else {
-            "MFA code is invalid".to_string()
-        },
+        message,
+        reason,
+        locked_until,
     };
 
     Ok((StatusCode::OK, Json(response)))

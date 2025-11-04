@@ -61,4 +61,6 @@ pub struct VerifyMfaCodeTestRequestDto {
 pub struct VerifyMfaCodeTestResponseDto {
     pub is_valid: bool,
     pub message: String,
+    pub reason: String,
+    pub locked_until: Option<i64>,
 }

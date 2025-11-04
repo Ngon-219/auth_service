@@ -4,8 +4,10 @@ use crate::entities::user_mfa;
 use crate::static_service::DATABASE_CONNECTION;
 use anyhow::Result;
 use google_authenticator::GoogleAuthenticator;
-use crate::config::APP_CONFIG;
+use crate::config::{APP_CONFIG, MFA_MAX_FAIL_ATTEMPTS};
 use crate::utils::encryption::decrypt;
+use crate::redis_service::MfaRedisService;
+use crate::repositories::mfa_verify_result::MfaVerifyResult;
 
 pub struct UserMfaRepository;
 
@@ -101,11 +103,28 @@ impl UserMfaRepository {
         Ok(result)
     }
 
-    pub async fn verify_mfa_code(&self, user_id: &str, code: &str) -> anyhow::Result<bool> {
+    pub async fn verify_mfa_code(&self, user_id: &str, code: &str) -> anyhow::Result<MfaVerifyResult> {
+        // Get MFA attempts
+        let mut mfa_attempts = MfaRedisService::get_mfa_attempts(user_id).await?;
+        
+        // Check if MFA is locked
+        if mfa_attempts.is_locked() {
+            tracing::warn!("MFA is locked for user {} due to too many failed attempts", user_id);
+            return Ok(MfaVerifyResult::Locked {
+                locked_until: mfa_attempts.locked_until,
+            });
+        }
+
+        // Check if code has been used before
+        if MfaRedisService::is_mfa_code_used(user_id, code).await? {
+            tracing::warn!("MFA code {} already used for user {}", code, user_id);
+            return Ok(MfaVerifyResult::CodeAlreadyUsed);
+        }
+
         let user_mfa = self.find_enabled_by_user_id(user_id.parse()?).await?;
 
         let Some(user_mfa) = user_mfa else {
-            return Ok(false);
+            return Ok(MfaVerifyResult::MfaNotEnabled);
         };
 
         let decrypted_secret = decrypt(&APP_CONFIG.encryption_key, &user_mfa.secret).map_err(|e| anyhow::anyhow!("Failed to decrypt secret: {}", e))?;
@@ -114,6 +133,29 @@ impl UserMfaRepository {
 
         let is_valid = auth.verify_code(&decrypted_secret, code, 1, 0);
 
-        Ok(is_valid)
+        if is_valid {
+            // Mark code as used
+            MfaRedisService::mark_mfa_code_as_used(user_id, code).await?;
+            
+            // Reset fail count and lock on success
+            MfaRedisService::reset_mfa_attempts(user_id).await?;
+            
+            tracing::info!("MFA code verified successfully for user {}", user_id);
+            Ok(MfaVerifyResult::Success)
+        } else {
+            // Increment fail count (will set locked_until if >= 3)
+            mfa_attempts.increment_fail();
+            let locked_until = mfa_attempts.locked_until;
+            MfaRedisService::set_mfa_attempts(user_id, &mfa_attempts).await?;
+            
+            tracing::warn!("MFA code verification failed for user {} (attempt {})", user_id, mfa_attempts.invalid_mfa_count);
+            
+            if mfa_attempts.invalid_mfa_count >= MFA_MAX_FAIL_ATTEMPTS {
+                tracing::error!("MFA locked for user {} for 15 minutes due to {} failed attempts", user_id, MFA_MAX_FAIL_ATTEMPTS);
+                Ok(MfaVerifyResult::Locked { locked_until })
+            } else {
+                Ok(MfaVerifyResult::InvalidCode)
+            }
+        }
     }
 }

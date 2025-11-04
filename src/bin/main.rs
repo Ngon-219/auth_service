@@ -5,6 +5,7 @@ use auth_service::grpc::start_grpc_server;
 use auth_service::static_service::get_database_connection;
 use auth_service::{app, config::APP_CONFIG, utils::tracing::init_standard_tracing};
 use auth_service::rabbitmq_service::rabbitmq_service::RabbitMQService;
+use auth_service::redis_service::init_redis_connection;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -21,6 +22,15 @@ async fn main() -> anyhow::Result<()> {
 
     if let Ok(()) = RabbitMQService::create_mail_queue(rabbit_mq).await {
         tracing::info!("Create rabbitmq queue successfully");
+    }
+
+    // Initialize Redis connection
+    tracing::info!("Initializing Redis connection...");
+    if let Err(e) = init_redis_connection().await {
+        tracing::error!("Failed to initialize Redis connection: {}", e);
+        tracing::warn!("Continuing without Redis (MFA features may not work properly)...");
+    } else {
+        tracing::info!("Redis connection initialized successfully");
     }
 
     // Initialize default admin user

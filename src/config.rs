@@ -3,6 +3,11 @@ use once_cell::sync::Lazy;
 
 pub const OTP_ISSUER: &str = "NGON";
 
+// MFA Configuration
+pub const MFA_MAX_FAIL_ATTEMPTS: u32 = 3;
+pub const MFA_CODE_REUSE_TTL_SECONDS: u64 = 120; // 2 minutes
+pub const MFA_LOCK_DURATION_SECONDS: u64 = 900; // 15 minutes
+
 pub static APP_CONFIG: Lazy<Config> = Lazy::new(Config::parse);
 
 #[derive(Debug, Parser, Clone)]
@@ -48,4 +53,7 @@ pub struct Config {
 
     #[clap(long, env)]
     pub chain_id: String,
+
+    #[clap(long, env, default_value = "redis://127.0.0.1:6379")]
+    pub redis_url: String,
 }

@@ -63,5 +63,8 @@ aes = "0.8.3"
 cbc = { version = "0.1.2", features = ["std"] }
 scrypt = { version = "0.11", default-features = false }
 
+# Redis
+redis = { version = "0.26", features = ["tokio-comp", "connection-manager"] }
+
 [build-dependencies]
 tonic-build = { version = "0.12", features = ["prost"] }
