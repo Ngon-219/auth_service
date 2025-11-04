@@ -7,7 +7,7 @@ use anyhow::Context;
 use chrono::{Duration, Utc};
 use google_authenticator::GoogleAuthenticator;
 use uuid::Uuid;
-use crate::routes::user_mfa::dto::{EnableMfaRequestDto, EnableMfaResponseDto, ReqEnableMfaResponseDto};
+use crate::routes::user_mfa::dto::{EnableMfaRequestDto, EnableMfaResponseDto, ReqEnableMfaResponseDto, VerifyMfaCodeTestRequestDto, VerifyMfaCodeTestResponseDto};
 use crate::extractor::AuthClaims;
 use crate::repositories::{UserRepository, UserMfaRepository, OtpVerifyRepository};
 use crate::rabbitmq_service::rabbitmq_service::RabbitMQService;
@@ -20,6 +20,7 @@ pub fn create_route() -> Router {
     Router::new()
         .route("/api/v1/user-mfa/enable", post(req_enable_mfa))
         .route("/api/v1/user-mfa/enable-mfa", post(enable_mfa))
+        .route("/api/v1/user-mfa/verify", post(verify_mfa_code_test))
 }
 
 #[utoipa::path(
@@ -237,6 +238,47 @@ pub async fn enable_mfa(
     let response = EnableMfaResponseDto {
         message: "Enable MFA successfully".to_string(),
         qr_code: otp_uri,
+    };
+
+    Ok((StatusCode::OK, Json(response)))
+}
+
+/// Test endpoint to verify MFA code (for testing only)
+#[utoipa::path(
+    post,
+    tag = "security-settings",
+    path = "/api/v1/user-mfa/verify",
+    request_body = VerifyMfaCodeTestRequestDto,
+    responses(
+        (status = 200, description = "MFA code verification result", body = VerifyMfaCodeTestResponseDto),
+        (status = 400, description = "Bad request"),
+        (status = 500, description = "Internal server error"),
+    ),
+    security(("bearer_auth" = []))
+)]
+#[axum::debug_handler]
+pub async fn verify_mfa_code_test(
+    AuthClaims(claims): AuthClaims,
+    Json(body): Json<VerifyMfaCodeTestRequestDto>,
+) -> Result<(StatusCode, Json<VerifyMfaCodeTestResponseDto>), (StatusCode, String)> {
+    let mfa_repo = UserMfaRepository::new();
+
+    let is_valid = mfa_repo.verify_mfa_code(&claims.user_id, &body.authenticator_code)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to verify MFA code: {}", e),
+            )
+        })?;
+
+    let response = VerifyMfaCodeTestResponseDto {
+        is_valid,
+        message: if is_valid {
+            "MFA code is valid".to_string()
+        } else {
+            "MFA code is invalid".to_string()
+        },
     };
 
     Ok((StatusCode::OK, Json(response)))

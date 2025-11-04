@@ -3,6 +3,9 @@ use uuid::Uuid;
 use crate::entities::user_mfa;
 use crate::static_service::DATABASE_CONNECTION;
 use anyhow::Result;
+use google_authenticator::GoogleAuthenticator;
+use crate::config::APP_CONFIG;
+use crate::utils::encryption::decrypt;
 
 pub struct UserMfaRepository;
 
@@ -96,5 +99,21 @@ impl UserMfaRepository {
 
         let result = mfa_model.update(db).await?;
         Ok(result)
+    }
+
+    pub async fn verify_mfa_code(&self, user_id: &str, code: &str) -> anyhow::Result<bool> {
+        let user_mfa = self.find_enabled_by_user_id(user_id.parse()?).await?;
+
+        let Some(user_mfa) = user_mfa else {
+            return Ok(false);
+        };
+
+        let decrypted_secret = decrypt(&APP_CONFIG.encryption_key, &user_mfa.secret).map_err(|e| anyhow::anyhow!("Failed to decrypt secret: {}", e))?;
+
+        let auth = GoogleAuthenticator::new();
+
+        let is_valid = auth.verify_code(&decrypted_secret, code, 1, 0);
+
+        Ok(is_valid)
     }
 }

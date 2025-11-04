@@ -49,3 +49,16 @@ pub struct ReqEnableMfaResponseDto {
 pub struct GetSecuritySettingsResponseDto {
     pub twofa_enabled: bool,
 }
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifyMfaCodeTestRequestDto {
+    pub authenticator_code: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifyMfaCodeTestResponseDto {
+    pub is_valid: bool,
+    pub message: String,
+}

@@ -2,7 +2,7 @@ use axum::{Json, Router, http::StatusCode, routing::post};
 
 use super::dto::{LoginRequest, LoginResponse};
 use crate::entities::sea_orm_active_enums::RoleEnum;
-use crate::repositories::UserRepository;
+use crate::repositories::{UserRepository, UserMfaRepository};
 use do_an_lib::jwt::JwtManager;
 use do_an_lib::structs::token_claims::UserRole;
 
@@ -56,6 +56,45 @@ pub async fn login(
             StatusCode::UNAUTHORIZED,
             "Invalid email or password".to_string(),
         ));
+    }
+
+    // Check if user has MFA enabled
+    let mfa_repo = UserMfaRepository::new();
+    let user_id_str = user_info.user_id.to_string();
+    let mfa_enabled = mfa_repo.find_enabled_by_user_id(user_info.user_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to check MFA status: {}", e),
+            )
+        })?;
+
+    // If MFA is enabled, verify the authenticator code
+    if let Some(_mfa_record) = mfa_enabled {
+        let authenticator_code = payload.authenticator_code
+            .ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "MFA is enabled. Please provide authenticator_code".to_string(),
+                )
+            })?;
+
+        let is_valid = mfa_repo.verify_mfa_code(&user_id_str, &authenticator_code)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to verify MFA code: {}", e),
+                )
+            })?;
+
+        if !is_valid {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                "Invalid authenticator code".to_string(),
+            ));
+        }
     }
 
     // Convert RoleEnum to UserRole

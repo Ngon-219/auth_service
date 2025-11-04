@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package mfa;
+
+service MfaService {
+    // Verify MFA authenticator code for a user
+    rpc VerifyMfaCode(VerifyMfaCodeRequest) returns (VerifyMfaCodeResponse);
+}
+
+message VerifyMfaCodeRequest {
+    string user_id = 1;
+    string authenticator_code = 2;
+}
+
+message VerifyMfaCodeResponse {
+    bool is_valid = 1;
+}
+

@@ -39,6 +39,7 @@ use utoipa::openapi::security::SecurityScheme;
         crate::routes::students::route::get_system_info,
         crate::routes::user_mfa::route::req_enable_mfa,
         crate::routes::user_mfa::route::enable_mfa,
+        crate::routes::user_mfa::route::verify_mfa_code_test,
     ),
     components(
         schemas(
@@ -75,6 +76,8 @@ use utoipa::openapi::security::SecurityScheme;
             crate::routes::user_mfa::dto::EnableMfaRequestDto,
             crate::routes::user_mfa::dto::EnableMfaResponseDto,
             crate::routes::user_mfa::dto::ReqEnableMfaResponseDto,
+            crate::routes::user_mfa::dto::VerifyMfaCodeTestRequestDto,
+            crate::routes::user_mfa::dto::VerifyMfaCodeTestResponseDto,
             crate::entities::sea_orm_active_enums::RoleEnum,
         ),
     ),
