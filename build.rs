@@ -5,4 +5,3 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .compile_protos(&["proto/wallet.proto", "proto/mfa.proto"], &["proto"])?;
     Ok(())
 }
-

@@ -5,5 +5,6 @@ pub mod majors;
 pub mod managers;
 pub mod profile;
 pub mod students;
-pub mod users;
+pub mod upload;
 pub mod user_mfa;
+pub mod users;

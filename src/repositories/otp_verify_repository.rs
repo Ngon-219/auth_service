@@ -1,9 +1,12 @@
-use sea_orm::{DatabaseConnection, EntityTrait, ColumnTrait, QueryFilter, QueryOrder, QuerySelect, ActiveModelTrait, Set};
-use uuid::Uuid;
 use crate::entities::otp_verify;
 use crate::static_service::DATABASE_CONNECTION;
 use anyhow::Result;
 use chrono::{NaiveDateTime, Utc};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
+};
+use uuid::Uuid;
 
 pub struct OtpVerifyRepository;
 
@@ -60,10 +63,7 @@ impl OtpVerifyRepository {
         Ok(otp)
     }
 
-    pub async fn mark_as_verified(
-        &self,
-        otp_id: Uuid,
-    ) -> Result<otp_verify::Model> {
+    pub async fn mark_as_verified(&self, otp_id: Uuid) -> Result<otp_verify::Model> {
         let db = self.get_connection();
         let otp = otp_verify::Entity::find_by_id(otp_id)
             .one(db)
@@ -78,14 +78,9 @@ impl OtpVerifyRepository {
         Ok(result)
     }
 
-    pub async fn find_by_id(
-        &self,
-        otp_id: Uuid,
-    ) -> Result<Option<otp_verify::Model>> {
+    pub async fn find_by_id(&self, otp_id: Uuid) -> Result<Option<otp_verify::Model>> {
         let db = self.get_connection();
-        let otp = otp_verify::Entity::find_by_id(otp_id)
-            .one(db)
-            .await?;
+        let otp = otp_verify::Entity::find_by_id(otp_id).one(db).await?;
         Ok(otp)
     }
 }

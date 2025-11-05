@@ -1,9 +1,11 @@
-use sea_orm::{DatabaseConnection, EntityTrait, ColumnTrait, QueryFilter, ActiveModelTrait, Set, DeleteResult};
-use uuid::Uuid;
 use crate::entities::department;
 use crate::static_service::DATABASE_CONNECTION;
 use anyhow::Result;
 use chrono::{NaiveDateTime, Utc};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DeleteResult, EntityTrait, QueryFilter, Set,
+};
+use uuid::Uuid;
 
 pub struct DepartmentRepository;
 
@@ -20,16 +22,11 @@ impl DepartmentRepository {
 
     pub async fn find_all(&self) -> Result<Vec<department::Model>> {
         let db = self.get_connection();
-        let departments = department::Entity::find()
-            .all(db)
-            .await?;
+        let departments = department::Entity::find().all(db).await?;
         Ok(departments)
     }
 
-    pub async fn find_by_id(
-        &self,
-        department_id: Uuid,
-    ) -> Result<Option<department::Model>> {
+    pub async fn find_by_id(&self, department_id: Uuid) -> Result<Option<department::Model>> {
         let db = self.get_connection();
         let department = department::Entity::find()
             .filter(department::Column::DepartmentId.eq(department_id))
@@ -65,7 +62,9 @@ impl DepartmentRepository {
         department_id: Uuid,
         updates: DepartmentUpdate,
     ) -> Result<department::Model> {
-        let department = self.find_by_id(department_id).await?
+        let department = self
+            .find_by_id(department_id)
+            .await?
             .ok_or_else(|| anyhow::anyhow!("Department not found"))?;
         let db = self.get_connection();
 
@@ -87,11 +86,10 @@ impl DepartmentRepository {
         Ok(result)
     }
 
-    pub async fn delete(
-        &self,
-        department_id: Uuid,
-    ) -> Result<DeleteResult> {
-        let department = self.find_by_id(department_id).await?
+    pub async fn delete(&self, department_id: Uuid) -> Result<DeleteResult> {
+        let department = self
+            .find_by_id(department_id)
+            .await?
             .ok_or_else(|| anyhow::anyhow!("Department not found"))?;
         let db = self.get_connection();
 

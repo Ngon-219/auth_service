@@ -1,11 +1,12 @@
+use std::fs;
 use std::net::SocketAddr;
 
 use auth_service::bootstrap::initialize_admin_user;
 use auth_service::grpc::start_grpc_server;
-use auth_service::static_service::get_database_connection;
-use auth_service::{app, config::APP_CONFIG, utils::tracing::init_standard_tracing};
 use auth_service::rabbitmq_service::rabbitmq_service::RabbitMQService;
 use auth_service::redis_service::init_redis_connection;
+use auth_service::static_service::get_database_connection;
+use auth_service::{app, config::APP_CONFIG, utils::tracing::init_standard_tracing};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -14,6 +15,9 @@ async fn main() -> anyhow::Result<()> {
     init_standard_tracing(env!("CARGO_CRATE_NAME"));
 
     tracing::info!("Starting application...");
+
+    tracing::info!("Create upload folder");
+    fs::create_dir_all("./uploads/temp").unwrap();
 
     // Initialize database connection
     let db_connection = get_database_connection().await;
@@ -55,9 +59,9 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("HTTP server listening on {}", &http_address);
     tracing::info!("gRPC server listening on 0.0.0.0:{}", APP_CONFIG.grpc_port);
-    
+
     let listener = tokio::net::TcpListener::bind(http_address).await.unwrap();
-    
+
     // Run HTTP server
     let http_result = axum::serve(
         listener,

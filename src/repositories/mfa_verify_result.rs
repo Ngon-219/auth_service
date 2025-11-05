@@ -3,9 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MfaVerifyResult {
     Success,
-    Locked {
-        locked_until: Option<i64>,
-    },
+    Locked { locked_until: Option<i64> },
     CodeAlreadyUsed,
     InvalidCode,
     MfaNotEnabled,
@@ -42,4 +40,3 @@ impl MfaVerifyResult {
         }
     }
 }
-

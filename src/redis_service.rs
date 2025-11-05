@@ -1,31 +1,36 @@
-use once_cell::sync::Lazy;
-use redis::aio::ConnectionManager;
-use redis::AsyncCommands;
+use crate::config::{
+    APP_CONFIG, MFA_CODE_REUSE_TTL_SECONDS, MFA_LOCK_DURATION_SECONDS, MFA_MAX_FAIL_ATTEMPTS,
+};
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
-use crate::config::{APP_CONFIG, MFA_MAX_FAIL_ATTEMPTS, MFA_CODE_REUSE_TTL_SECONDS, MFA_LOCK_DURATION_SECONDS};
 use chrono::Utc;
+use once_cell::sync::Lazy;
+use redis::AsyncCommands;
+use redis::aio::ConnectionManager;
+use serde::{Deserialize, Serialize};
 
 pub static REDIS_CLIENT: Lazy<redis::Client> = Lazy::new(|| {
-    redis::Client::open(APP_CONFIG.redis_url.as_str())
-        .expect("Failed to create Redis client")
+    redis::Client::open(APP_CONFIG.redis_url.as_str()).expect("Failed to create Redis client")
 });
 
 pub async fn init_redis_connection() -> Result<()> {
     // Test connection
-    let mut conn = REDIS_CLIENT.get_connection_manager().await
+    let mut conn = REDIS_CLIENT
+        .get_connection_manager()
+        .await
         .context("Failed to get Redis connection")?;
-    
+
     let _: String = redis::cmd("PING")
         .query_async(&mut conn)
         .await
         .context("Failed to ping Redis")?;
-    
+
     Ok(())
 }
 
 pub async fn get_redis() -> Result<ConnectionManager> {
-    REDIS_CLIENT.get_connection_manager().await
+    REDIS_CLIENT
+        .get_connection_manager()
+        .await
         .context("Failed to get Redis connection")
 }
 
@@ -70,13 +75,15 @@ pub struct MfaRedisService;
 impl MfaRedisService {
     /// Get MFA attempts for a user
     pub async fn get_mfa_attempts(user_id: &str) -> Result<MfaAttempts> {
-        let mut redis = get_redis().await.context("Failed to get Redis connection")?;
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
         let key = format!("mfa:attempts:{}", user_id);
-        
+
         match redis.get::<_, Option<String>>(&key).await? {
             Some(json) => {
-                let mfa_attempts: MfaAttempts = serde_json::from_str(&json)
-                    .context("Failed to deserialize MFA attempts")?;
+                let mfa_attempts: MfaAttempts =
+                    serde_json::from_str(&json).context("Failed to deserialize MFA attempts")?;
                 Ok(mfa_attempts)
             }
             None => {
@@ -92,19 +99,23 @@ impl MfaRedisService {
 
     /// Set MFA attempts for a user
     pub async fn set_mfa_attempts(user_id: &str, mfa_attempts: &MfaAttempts) -> Result<()> {
-        let mut redis = get_redis().await.context("Failed to get Redis connection")?;
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
         let key = format!("mfa:attempts:{}", user_id);
-        
-        let json = serde_json::to_string(mfa_attempts)
-            .context("Failed to serialize MFA attempts")?;
-        
+
+        let json =
+            serde_json::to_string(mfa_attempts).context("Failed to serialize MFA attempts")?;
+
         let _: () = redis.set_ex(&key, json, MFA_LOCK_DURATION_SECONDS).await?;
         Ok(())
     }
 
     /// Reset MFA attempts for a user
     pub async fn reset_mfa_attempts(user_id: &str) -> Result<()> {
-        let mut redis = get_redis().await.context("Failed to get Redis connection")?;
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
         let key = format!("mfa:attempts:{}", user_id);
         let _: () = redis.del(&key).await?;
         Ok(())
@@ -112,7 +123,9 @@ impl MfaRedisService {
 
     /// Check if a code has been used before
     pub async fn is_mfa_code_used(user_id: &str, code: &str) -> Result<bool> {
-        let mut redis = get_redis().await.context("Failed to get Redis connection")?;
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
         let key = format!("mfa:used_code:{}:{}", user_id, code);
         let exists: bool = redis.exists(&key).await?;
         Ok(exists)
@@ -120,11 +133,12 @@ impl MfaRedisService {
 
     /// Mark a code as used (with TTL)
     pub async fn mark_mfa_code_as_used(user_id: &str, code: &str) -> Result<()> {
-        let mut redis = get_redis().await.context("Failed to get Redis connection")?;
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
         let key = format!("mfa:used_code:{}:{}", user_id, code);
         let now = Utc::now().timestamp();
         let _: () = redis.set_ex(&key, now, MFA_CODE_REUSE_TTL_SECONDS).await?;
         Ok(())
     }
 }
-

@@ -39,7 +39,8 @@ pub async fn get_profile(
     })?;
 
     // Get user info from DB
-    let user_info = user_repo.find_by_id(user_id_uuid)
+    let user_info = user_repo
+        .find_by_id(user_id_uuid)
         .await
         .map_err(|e| {
             (
@@ -50,7 +51,8 @@ pub async fn get_profile(
         .ok_or_else(|| (StatusCode::NOT_FOUND, "User not found".to_string()))?;
 
     // Get wallet info
-    let wallet_info = wallet_repo.find_by_user_id(user_id_uuid)
+    let wallet_info = wallet_repo
+        .find_by_user_id(user_id_uuid)
         .await
         .map_err(|e| {
             (

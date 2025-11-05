@@ -1,11 +1,11 @@
+use anyhow::Context;
 use std::net::SocketAddr;
 use tonic::transport::Server;
 use tracing::info;
-use anyhow::Context;
 
-use crate::config::APP_CONFIG;
-use super::wallet_service::create_wallet_service;
 use super::mfa_service::create_mfa_service;
+use super::wallet_service::create_wallet_service;
+use crate::config::APP_CONFIG;
 
 pub async fn start_grpc_server() -> anyhow::Result<()> {
     let addr: SocketAddr = format!("0.0.0.0:{}", APP_CONFIG.grpc_port)
@@ -26,4 +26,3 @@ pub async fn start_grpc_server() -> anyhow::Result<()> {
 
     Ok(())
 }
-

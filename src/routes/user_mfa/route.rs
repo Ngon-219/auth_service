@@ -1,20 +1,19 @@
-use axum::{
-    Json, Router,
-    http::StatusCode,
-    routing::post,
-};
-use anyhow::Context;
-use chrono::{Duration, Utc};
-use google_authenticator::GoogleAuthenticator;
-use uuid::Uuid;
-use crate::routes::user_mfa::dto::{EnableMfaRequestDto, EnableMfaResponseDto, ReqEnableMfaResponseDto, VerifyMfaCodeTestRequestDto, VerifyMfaCodeTestResponseDto};
-use crate::extractor::AuthClaims;
-use crate::repositories::{UserRepository, UserMfaRepository, OtpVerifyRepository};
-use crate::rabbitmq_service::rabbitmq_service::RabbitMQService;
-use urlencoding::encode;
 use crate::config::{APP_CONFIG, OTP_ISSUER};
+use crate::extractor::AuthClaims;
+use crate::rabbitmq_service::rabbitmq_service::RabbitMQService;
+use crate::repositories::{OtpVerifyRepository, UserMfaRepository, UserRepository};
+use crate::routes::user_mfa::dto::{
+    EnableMfaRequestDto, EnableMfaResponseDto, ReqEnableMfaResponseDto,
+    VerifyMfaCodeTestRequestDto, VerifyMfaCodeTestResponseDto,
+};
 use crate::utils::encryption::encrypt;
 use crate::utils::gen_otp_code::gen_code;
+use anyhow::Context;
+use axum::{Json, Router, http::StatusCode, routing::post};
+use chrono::{Duration, Utc};
+use google_authenticator::GoogleAuthenticator;
+use urlencoding::encode;
+use uuid::Uuid;
 
 pub fn create_route() -> Router {
     Router::new()
@@ -45,15 +44,11 @@ pub async fn req_enable_mfa(
     let otp_repo = OtpVerifyRepository::new();
 
     let user_id = Uuid::parse_str(&claims.user_id)
-        .map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("Invalid user_id: {}", e),
-            )
-        })?;
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid user_id: {}", e)))?;
 
     // Find user
-    let user_info = user_repo.find_by_id(user_id)
+    let user_info = user_repo
+        .find_by_id(user_id)
         .await
         .map_err(|e| {
             (
@@ -61,22 +56,15 @@ pub async fn req_enable_mfa(
                 format!("Failed to query database: {}", e),
             )
         })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                "User not found".to_string(),
-            )
-        })?;
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "User not found".to_string()))?;
 
     // Check if MFA is already enabled
-    let existing_mfa = mfa_repo.find_by_user_id(user_id)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to check user mfa: {}", e),
-            )
-        })?;
+    let existing_mfa = mfa_repo.find_by_user_id(user_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to check user mfa: {}", e),
+        )
+    })?;
 
     if let Some(mfa_record) = existing_mfa {
         if mfa_record.is_enabled {
@@ -87,30 +75,31 @@ pub async fn req_enable_mfa(
         }
     }
 
-    let (otp_code, _expires_at) = gen_code().map_err(
-        |e| (
+    let (otp_code, _expires_at) = gen_code().map_err(|e| {
+        (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to generate OTP code: {}", e),
         )
-    )?;
+    })?;
 
     let expires_at = Utc::now().naive_utc() + Duration::minutes(5);
 
-    otp_repo.create(
-        user_id,
-        otp_code.clone(),
-        user_info.email.clone(),
-        "enable_mfa".to_string(),
-        expires_at,
-    )
-    .await
-    .context("Failed to create otp verify")
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to create OTP verify: {}", e),
+    otp_repo
+        .create(
+            user_id,
+            otp_code.clone(),
+            user_info.email.clone(),
+            "enable_mfa".to_string(),
+            expires_at,
         )
-    })?;
+        .await
+        .context("Failed to create otp verify")
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to create OTP verify: {}", e),
+            )
+        })?;
 
     let email_body = format!(
         "Your OTP code to enable MFA is: {:?}. This code will expire in 10 minutes.",
@@ -157,19 +146,21 @@ pub async fn req_enable_mfa(
 pub async fn enable_mfa(
     AuthClaims(claims): AuthClaims,
     Json(body): Json<EnableMfaRequestDto>,
-) -> Result<(StatusCode, Json<crate::routes::user_mfa::dto::EnableMfaResponseDto>), (StatusCode, String)> {
+) -> Result<
+    (
+        StatusCode,
+        Json<crate::routes::user_mfa::dto::EnableMfaResponseDto>,
+    ),
+    (StatusCode, String),
+> {
     let otp_repo = OtpVerifyRepository::new();
     let mfa_repo = UserMfaRepository::new();
 
     let user_id = Uuid::parse_str(&claims.user_id)
-        .map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("Invalid user_id: {}", e),
-            )
-        })?;
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid user_id: {}", e)))?;
 
-    let otp_record = otp_repo.find_latest_by_user_and_purpose(user_id, "enable_mfa")
+    let otp_record = otp_repo
+        .find_latest_by_user_and_purpose(user_id, "enable_mfa")
         .await
         .map_err(|e| {
             (
@@ -185,10 +176,7 @@ pub async fn enable_mfa(
         })?;
 
     if otp_record.otp_code != body.otp_code {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Invalid OTP code".to_string(),
-        ));
+        return Err((StatusCode::BAD_REQUEST, "Invalid OTP code".to_string()));
     }
 
     if otp_record.is_verified {
@@ -199,10 +187,7 @@ pub async fn enable_mfa(
     }
 
     if otp_record.expires_at < Utc::now().naive_utc() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "OTP code has expired".to_string(),
-        ));
+        return Err((StatusCode::BAD_REQUEST, "OTP code has expired".to_string()));
     }
 
     let auth = GoogleAuthenticator::new();
@@ -214,26 +199,27 @@ pub async fn enable_mfa(
         OTP_ISSUER
     );
 
-    let encode_secret = encrypt(&APP_CONFIG.encryption_key, &secret).map_err(
-        |e| (
+    let encode_secret = encrypt(&APP_CONFIG.encryption_key, &secret).map_err(|e| {
+        (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to encrypt secret: {}", e),
         )
-    )?;
-
-    mfa_repo.create(
-        user_id,
-        encode_secret,
-        None, // backup_codes
-    )
-    .await
-    .context("Failed to create user MFA")
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to create user MFA: {}", e),
-        )
     })?;
+
+    mfa_repo
+        .create(
+            user_id,
+            encode_secret,
+            None, // backup_codes
+        )
+        .await
+        .context("Failed to create user MFA")
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to create user MFA: {}", e),
+            )
+        })?;
 
     let response = EnableMfaResponseDto {
         message: "Enable MFA successfully".to_string(),
@@ -264,8 +250,9 @@ pub async fn verify_mfa_code_test(
     let mfa_repo = UserMfaRepository::new();
 
     use crate::repositories::mfa_verify_result::MfaVerifyResult;
-    
-    let result = mfa_repo.verify_mfa_code(&claims.user_id, &body.authenticator_code)
+
+    let result = mfa_repo
+        .verify_mfa_code(&claims.user_id, &body.authenticator_code)
         .await
         .map_err(|e| {
             (
@@ -283,8 +270,11 @@ pub async fn verify_mfa_code_test(
         ),
         MfaVerifyResult::Locked { locked_until } => (
             false,
-            format!("MFA is locked{}", 
-                locked_until.map(|u| format!(" until {}", u)).unwrap_or_default()
+            format!(
+                "MFA is locked{}",
+                locked_until
+                    .map(|u| format!(" until {}", u))
+                    .unwrap_or_default()
             ),
             "locked".to_string(),
             locked_until,

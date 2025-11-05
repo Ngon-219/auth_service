@@ -7,8 +7,8 @@ pub mod mfa {
 }
 
 use mfa::{
-    mfa_service_server::{MfaService, MfaServiceServer},
     VerifyMfaCodeRequest, VerifyMfaCodeResponse,
+    mfa_service_server::{MfaService, MfaServiceServer},
 };
 
 pub struct MfaServiceImpl;
@@ -33,7 +33,10 @@ impl MfaService for MfaServiceImpl {
 
         use crate::repositories::mfa_verify_result::MfaVerifyResult;
 
-        match mfa_repo.verify_mfa_code(&req.user_id, &req.authenticator_code).await {
+        match mfa_repo
+            .verify_mfa_code(&req.user_id, &req.authenticator_code)
+            .await
+        {
             Ok(result) => {
                 let (is_valid, reason, message, locked_until) = match result {
                     MfaVerifyResult::Success => (
@@ -45,8 +48,11 @@ impl MfaService for MfaServiceImpl {
                     MfaVerifyResult::Locked { locked_until } => (
                         false,
                         "locked".to_string(),
-                        format!("MFA is locked{}", 
-                            locked_until.map(|u| format!(" until {}", u)).unwrap_or_default()
+                        format!(
+                            "MFA is locked{}",
+                            locked_until
+                                .map(|u| format!(" until {}", u))
+                                .unwrap_or_default()
                         ),
                         locked_until.unwrap_or(0),
                     ),
@@ -91,4 +97,3 @@ impl MfaService for MfaServiceImpl {
 pub fn create_mfa_service() -> MfaServiceServer<MfaServiceImpl> {
     MfaServiceServer::new(MfaServiceImpl)
 }
-

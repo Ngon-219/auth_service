@@ -74,11 +74,10 @@ pub async fn http_logger(
     req: Request,
     next: Next,
 ) -> std::result::Result<impl IntoResponse, (StatusCode, String)> {
-
     // Log immediately to verify middleware is called (can be removed later)
     let path = req.uri().path();
     tracing::debug!("HTTP logger middleware called: {} {}", req.method(), path);
-    
+
     let start_time = Instant::now();
 
     let method = req.method().clone();

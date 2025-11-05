@@ -9,8 +9,8 @@ pub mod wallet {
 }
 
 use wallet::{
-    wallet_service_server::{WalletService, WalletServiceServer},
     ExportPrivateKeyRequest, ExportPrivateKeyResponse,
+    wallet_service_server::{WalletService, WalletServiceServer},
 };
 
 pub struct WalletServiceImpl;
@@ -48,4 +48,3 @@ impl WalletService for WalletServiceImpl {
 pub fn create_wallet_service() -> WalletServiceServer<WalletServiceImpl> {
     WalletServiceServer::new(WalletServiceImpl)
 }
-

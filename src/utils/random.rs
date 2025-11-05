@@ -1,4 +1,4 @@
-use rand::{distr::Alphanumeric, Rng, RngCore};
+use rand::{Rng, RngCore, distr::Alphanumeric};
 
 /// Generates a random alphanumeric string of the specified length.
 ///

@@ -2,7 +2,10 @@ use axum::http::StatusCode;
 use do_an_lib::structs::token_claims::{TokenClaims, UserRole};
 
 /// Check if user has required role(s)
-pub fn has_role(claims: &TokenClaims, required_roles: &[UserRole]) -> Result<(), (StatusCode, String)> {
+pub fn has_role(
+    claims: &TokenClaims,
+    required_roles: &[UserRole],
+) -> Result<(), (StatusCode, String)> {
     if required_roles.contains(&claims.role) {
         Ok(())
     } else {
@@ -25,7 +28,10 @@ pub fn is_admin_or_manager(claims: &TokenClaims) -> Result<(), (StatusCode, Stri
 
 /// Check if user is admin, manager, or teacher
 pub fn is_staff(claims: &TokenClaims) -> Result<(), (StatusCode, String)> {
-    has_role(claims, &[UserRole::ADMIN, UserRole::MANAGER, UserRole::TEACHER])
+    has_role(
+        claims,
+        &[UserRole::ADMIN, UserRole::MANAGER, UserRole::TEACHER],
+    )
 }
 
 /// Check if user can access resource (is owner or has admin/manager role)
@@ -78,4 +84,3 @@ pub fn can_modify_user(
         )),
     }
 }
-

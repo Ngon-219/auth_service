@@ -1,5 +1,5 @@
-use chrono::{DateTime, Duration, Utc};
 use crate::utils::random::generate_random_string;
+use chrono::{DateTime, Duration, Utc};
 
 pub fn gen_code() -> anyhow::Result<(String, DateTime<Utc>)> {
     const EXPIRES_IN_MINUTES: i64 = 10; // 10 minutes

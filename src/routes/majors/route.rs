@@ -38,7 +38,7 @@ pub async fn create_major(
     AuthClaims(auth_claims): AuthClaims,
     Json(payload): Json<CreateMajorRequest>,
 ) -> Result<(StatusCode, Json<MajorResponse>), (StatusCode, String)> {
-    // Check permission: Admin or Manager only  
+    // Check permission: Admin or Manager only
     if auth_claims.role != UserRole::ADMIN && auth_claims.role != UserRole::MANAGER {
         return Err((
             StatusCode::FORBIDDEN,
@@ -48,19 +48,20 @@ pub async fn create_major(
     let major_repo = MajorRepository::new();
     let major_id = Uuid::new_v4();
 
-    let major = major_repo.create(
-        major_id,
-        payload.name,
-        payload.founding_date,
-        payload.department_id,
-    )
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to create major: {}", e),
+    let major = major_repo
+        .create(
+            major_id,
+            payload.name,
+            payload.founding_date,
+            payload.department_id,
         )
-    })?;
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to create major: {}", e),
+            )
+        })?;
 
     let response = MajorResponse {
         major_id: major.major_id,
@@ -136,7 +137,8 @@ pub async fn get_major(
 ) -> Result<(StatusCode, Json<MajorResponse>), (StatusCode, String)> {
     let major_repo = MajorRepository::new();
 
-    let major = major_repo.find_by_id(major_id)
+    let major = major_repo
+        .find_by_id(major_id)
         .await
         .map_err(|e| {
             (
@@ -187,7 +189,7 @@ pub async fn update_major(
             "Only admin or manager can update majors".to_string(),
         ));
     }
-    
+
     let major_repo = MajorRepository::new();
 
     let updates = MajorUpdate {
@@ -242,7 +244,7 @@ pub async fn delete_major(
             "Only admin can delete majors".to_string(),
         ));
     }
-    
+
     let major_repo = MajorRepository::new();
 
     major_repo.delete(major_id).await.map_err(|e| {

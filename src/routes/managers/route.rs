@@ -5,12 +5,12 @@ use super::dto::{
 use crate::blockchain::get_user_blockchain_service;
 use crate::extractor::AuthClaims;
 use crate::repositories::UserRepository;
-use do_an_lib::structs::token_claims::UserRole;
 use axum::{
     Json, Router,
     http::StatusCode,
     routing::{delete, get, post},
 };
+use do_an_lib::structs::token_claims::UserRole;
 use uuid::Uuid;
 
 pub fn create_route() -> Router {

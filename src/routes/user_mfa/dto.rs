@@ -25,7 +25,6 @@ pub struct DisableMfaResponseDto {
     pub message: String,
 }
 
-
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EnableMfaRequestDto {

@@ -2,7 +2,7 @@ use axum::{Json, Router, http::StatusCode, routing::post};
 
 use super::dto::{LoginRequest, LoginResponse};
 use crate::entities::sea_orm_active_enums::RoleEnum;
-use crate::repositories::{UserRepository, UserMfaRepository};
+use crate::repositories::{UserMfaRepository, UserRepository};
 use do_an_lib::jwt::JwtManager;
 use do_an_lib::structs::token_claims::UserRole;
 
@@ -28,7 +28,8 @@ pub async fn login(
     let user_repo = UserRepository::new();
 
     // Find user by email
-    let user_info = user_repo.find_by_email(&payload.email)
+    let user_info = user_repo
+        .find_by_email(&payload.email)
         .await
         .map_err(|e| {
             (
@@ -61,7 +62,8 @@ pub async fn login(
     // Check if user has MFA enabled
     let mfa_repo = UserMfaRepository::new();
     let user_id_str = user_info.user_id.to_string();
-    let mfa_enabled = mfa_repo.find_enabled_by_user_id(user_info.user_id)
+    let mfa_enabled = mfa_repo
+        .find_enabled_by_user_id(user_info.user_id)
         .await
         .map_err(|e| {
             (
@@ -72,17 +74,17 @@ pub async fn login(
 
     // If MFA is enabled, verify the authenticator code
     if let Some(_mfa_record) = mfa_enabled {
-        let authenticator_code = payload.authenticator_code
-            .ok_or_else(|| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    "MFA is enabled. Please provide authenticator_code".to_string(),
-                )
-            })?;
+        let authenticator_code = payload.authenticator_code.ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "MFA is enabled. Please provide authenticator_code".to_string(),
+            )
+        })?;
 
         use crate::repositories::mfa_verify_result::MfaVerifyResult;
-        
-        let verify_result = mfa_repo.verify_mfa_code(&user_id_str, &authenticator_code)
+
+        let verify_result = mfa_repo
+            .verify_mfa_code(&user_id_str, &authenticator_code)
             .await
             .map_err(|e| {
                 (
@@ -101,10 +103,7 @@ pub async fn login(
                 } else {
                     "MFA is locked due to too many failed attempts".to_string()
                 };
-                return Err((
-                    StatusCode::FORBIDDEN,
-                    message,
-                ));
+                return Err((StatusCode::FORBIDDEN, message));
             }
             MfaVerifyResult::CodeAlreadyUsed => {
                 return Err((

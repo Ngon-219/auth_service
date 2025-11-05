@@ -1,9 +1,11 @@
-use sea_orm::{DatabaseConnection, EntityTrait, ColumnTrait, QueryFilter, ActiveModelTrait, Set, DeleteResult};
-use uuid::Uuid;
 use crate::entities::major;
 use crate::static_service::DATABASE_CONNECTION;
 use anyhow::Result;
 use chrono::{NaiveDateTime, Utc};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DeleteResult, EntityTrait, QueryFilter, Set,
+};
+use uuid::Uuid;
 
 pub struct MajorRepository;
 
@@ -20,16 +22,11 @@ impl MajorRepository {
 
     pub async fn find_all(&self) -> Result<Vec<major::Model>> {
         let db = self.get_connection();
-        let majors = major::Entity::find()
-            .all(db)
-            .await?;
+        let majors = major::Entity::find().all(db).await?;
         Ok(majors)
     }
 
-    pub async fn find_by_id(
-        &self,
-        major_id: Uuid,
-    ) -> Result<Option<major::Model>> {
+    pub async fn find_by_id(&self, major_id: Uuid) -> Result<Option<major::Model>> {
         let db = self.get_connection();
         let major = major::Entity::find()
             .filter(major::Column::MajorId.eq(major_id))
@@ -60,12 +57,10 @@ impl MajorRepository {
         Ok(result)
     }
 
-    pub async fn update(
-        &self,
-        major_id: Uuid,
-        updates: MajorUpdate,
-    ) -> Result<major::Model> {
-        let major = self.find_by_id(major_id).await?
+    pub async fn update(&self, major_id: Uuid, updates: MajorUpdate) -> Result<major::Model> {
+        let major = self
+            .find_by_id(major_id)
+            .await?
             .ok_or_else(|| anyhow::anyhow!("Major not found"))?;
         let db = self.get_connection();
 
@@ -87,11 +82,10 @@ impl MajorRepository {
         Ok(result)
     }
 
-    pub async fn delete(
-        &self,
-        major_id: Uuid,
-    ) -> Result<DeleteResult> {
-        let major = self.find_by_id(major_id).await?
+    pub async fn delete(&self, major_id: Uuid) -> Result<DeleteResult> {
+        let major = self
+            .find_by_id(major_id)
+            .await?
             .ok_or_else(|| anyhow::anyhow!("Major not found"))?;
         let db = self.get_connection();
 

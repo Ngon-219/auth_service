@@ -37,6 +37,7 @@ use utoipa::openapi::security::SecurityScheme;
         crate::routes::students::route::activate_student,
         crate::routes::students::route::check_student_active,
         crate::routes::students::route::get_system_info,
+        crate::routes::upload::route::upload_file_chunk,
         crate::routes::user_mfa::route::req_enable_mfa,
         crate::routes::user_mfa::route::enable_mfa,
         crate::routes::user_mfa::route::verify_mfa_code_test,
@@ -78,6 +79,7 @@ use utoipa::openapi::security::SecurityScheme;
             crate::routes::user_mfa::dto::ReqEnableMfaResponseDto,
             crate::routes::user_mfa::dto::VerifyMfaCodeTestRequestDto,
             crate::routes::user_mfa::dto::VerifyMfaCodeTestResponseDto,
+            crate::routes::upload::route::UploadChunkResponse,
             crate::entities::sea_orm_active_enums::RoleEnum,
         ),
     ),
@@ -91,6 +93,7 @@ use utoipa::openapi::security::SecurityScheme;
         (name = "Managers", description = "Manager management endpoints"),
         (name = "Students", description = "Student information endpoints"),
         (name = "System", description = "System information endpoints"),
+        (name = "Upload", description = "File upload endpoints"),
         (name = "security-settings", description = "Security settings and MFA endpoints"),
         (name = "health", description = "Health check endpoints")
     ),

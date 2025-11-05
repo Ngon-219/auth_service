@@ -1,9 +1,12 @@
-use sea_orm::{DatabaseConnection, EntityTrait, ColumnTrait, QueryFilter, QueryOrder, QuerySelect, PaginatorTrait, ActiveModelTrait, Set, DeleteResult};
-use uuid::Uuid;
-use crate::entities::{user, user_major, wallet};
 use crate::entities::sea_orm_active_enums::RoleEnum;
+use crate::entities::{user, user_major, wallet};
 use crate::static_service::DATABASE_CONNECTION;
 use anyhow::Result;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DeleteResult, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect, Set,
+};
+use uuid::Uuid;
 
 pub struct UserRepository;
 
@@ -18,21 +21,13 @@ impl UserRepository {
             .expect("DATABASE_CONNECTION not set")
     }
 
-    pub async fn find_by_id(
-        &self,
-        user_id: Uuid,
-    ) -> Result<Option<user::Model>> {
+    pub async fn find_by_id(&self, user_id: Uuid) -> Result<Option<user::Model>> {
         let db = self.get_connection();
-        let user = user::Entity::find_by_id(user_id)
-            .one(db)
-            .await?;
+        let user = user::Entity::find_by_id(user_id).one(db).await?;
         Ok(user)
     }
 
-    pub async fn find_by_email(
-        &self,
-        email: &str,
-    ) -> Result<Option<user::Model>> {
+    pub async fn find_by_email(&self, email: &str) -> Result<Option<user::Model>> {
         let db = self.get_connection();
         let user = user::Entity::find()
             .filter(user::Column::Email.eq(email))
@@ -93,7 +88,7 @@ impl UserRepository {
         user_id: Uuid,
     ) -> Result<Option<(user::Model, Option<wallet::Model>, Vec<Uuid>)>> {
         let user = self.find_by_id(user_id).await?;
-        
+
         if let Some(user_model) = user {
             let db = self.get_connection();
             // Get wallet info
@@ -154,12 +149,10 @@ impl UserRepository {
         Ok(result)
     }
 
-    pub async fn update(
-        &self,
-        user_id: Uuid,
-        updates: UserUpdate,
-    ) -> Result<user::Model> {
-        let user = self.find_by_id(user_id).await?
+    pub async fn update(&self, user_id: Uuid, updates: UserUpdate) -> Result<user::Model> {
+        let user = self
+            .find_by_id(user_id)
+            .await?
             .ok_or_else(|| anyhow::anyhow!("User not found"))?;
         let db = self.get_connection();
 
@@ -203,10 +196,7 @@ impl UserRepository {
         Ok(result)
     }
 
-    pub async fn delete(
-        &self,
-        user_id: Uuid,
-    ) -> Result<DeleteResult> {
+    pub async fn delete(&self, user_id: Uuid) -> Result<DeleteResult> {
         let db = self.get_connection();
         // Delete user major relationships first (foreign key constraint)
         user_major::Entity::delete_many()
@@ -215,9 +205,7 @@ impl UserRepository {
             .await?;
 
         // Delete user
-        let result = user::Entity::delete_by_id(user_id)
-            .exec(db)
-            .await?;
+        let result = user::Entity::delete_by_id(user_id).exec(db).await?;
 
         Ok(result)
     }

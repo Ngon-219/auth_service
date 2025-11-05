@@ -6,23 +6,23 @@ use axum::{
 };
 use calamine::{DataType, Reader, Xlsx, open_workbook_from_rs};
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, Set, ColumnTrait, QueryFilter, EntityTrait};
+use do_an_lib::structs::token_claims::UserRole;
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use std::io::Cursor;
 use uuid::Uuid;
-use do_an_lib::structs::token_claims::UserRole;
 
 use super::dto::{
-    BulkUserError, BulkUserResponse, CreateUserRequest, ExcelUserRow,
-    UpdateUserRequest, UserDetailResponse, UserListResponse, UserQueryParams, UserResponse
+    BulkUserError, BulkUserResponse, CreateUserRequest, ExcelUserRow, UpdateUserRequest,
+    UserDetailResponse, UserListResponse, UserQueryParams, UserResponse,
 };
 use crate::blockchain::{BlockchainService, get_admin_blockchain_service, get_user_private_key};
+use crate::config::APP_CONFIG;
 use crate::entities::sea_orm_active_enums::RoleEnum;
-use crate::entities::{user_major};
+use crate::entities::user_major;
 use crate::extractor::AuthClaims;
 use crate::middleware::permission;
-use crate::utils::encryption::encrypt_private_key;
-use crate::config::APP_CONFIG;
 use crate::repositories::{UserRepository, WalletRepository, user_repository::UserUpdate};
+use crate::utils::encryption::encrypt_private_key;
 
 pub fn create_route() -> Router {
     Router::new()
@@ -30,9 +30,7 @@ pub fn create_route() -> Router {
         .route("/api/v1/users/bulk", post(create_users_bulk))
         .route(
             "/api/v1/users/{user_id}",
-            get(get_user_by_id)
-                .put(update_user)
-                .delete(delete_user)
+            get(get_user_by_id).put(update_user).delete(delete_user),
         )
 }
 
@@ -93,8 +91,8 @@ pub async fn create_user(
         })?;
 
     // Encrypt private key before storing
-    let encrypted_private_key = encrypt_private_key(&wallet_private_key, &APP_CONFIG.encryption_key)
-        .map_err(|e| {
+    let encrypted_private_key =
+        encrypt_private_key(&wallet_private_key, &APP_CONFIG.encryption_key).map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to encrypt private key: {}", e),
@@ -104,43 +102,45 @@ pub async fn create_user(
     let user_id = Uuid::new_v4();
     let wallet_id = Uuid::new_v4();
 
-    let user = user_repo.create(
-        user_id,
-        payload.first_name.clone(),
-        payload.last_name.clone(),
-        payload.address.clone(),
-        payload.email.clone(),
-        hashed_password,
-        payload.cccd.clone(),
-        payload.phone_number.clone(),
-        payload.role.clone(),
-        false, // is_priority
-    )
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to create user: {}", e),
+    let user = user_repo
+        .create(
+            user_id,
+            payload.first_name.clone(),
+            payload.last_name.clone(),
+            payload.address.clone(),
+            payload.email.clone(),
+            hashed_password,
+            payload.cccd.clone(),
+            payload.phone_number.clone(),
+            payload.role.clone(),
+            false, // is_priority
         )
-    })?;
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to create user: {}", e),
+            )
+        })?;
 
-    wallet_repo.create(
-        wallet_id,
-        user_id,
-        wallet_address.clone(),
-        encrypted_private_key.clone(),
-        APP_CONFIG.chain_type.clone(),
-        wallet_address.clone(),
-        "active".to_string(),
-        APP_CONFIG.chain_id.clone(),
-    )
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to create wallet: {}", e),
+    wallet_repo
+        .create(
+            wallet_id,
+            user_id,
+            wallet_address.clone(),
+            encrypted_private_key.clone(),
+            APP_CONFIG.chain_type.clone(),
+            wallet_address.clone(),
+            "active".to_string(),
+            APP_CONFIG.chain_id.clone(),
         )
-    })?;
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to create wallet: {}", e),
+            )
+        })?;
 
     // Register on blockchain
     match payload.role {
@@ -404,31 +404,35 @@ pub async fn create_users_bulk(
             }
         };
 
-        let encrypted_private_key = match encrypt_private_key(&wallet_private_key, &APP_CONFIG.encryption_key) {
-            Ok(encrypted) => encrypted,
-            Err(e) => {
-                errors.push(BulkUserError {
-                    row: 0,
-                    email: user_data.email.clone(),
-                    error: format!("Failed to encrypt private key: {}", e),
-                });
-                continue;
-            }
-        };
+        let encrypted_private_key =
+            match encrypt_private_key(&wallet_private_key, &APP_CONFIG.encryption_key) {
+                Ok(encrypted) => encrypted,
+                Err(e) => {
+                    errors.push(BulkUserError {
+                        row: 0,
+                        email: user_data.email.clone(),
+                        error: format!("Failed to encrypt private key: {}", e),
+                    });
+                    continue;
+                }
+            };
 
         // Insert user into database
-        if let Err(e) = user_repo.create(
-            user_id,
-            user_data.first_name.clone(),
-            user_data.last_name.clone(),
-            user_data.address.clone(),
-            user_data.email.clone(),
-            hashed_password,
-            user_data.cccd.clone(),
-            user_data.phone_number.clone(),
-            role.clone(),
-            false, // is_priority
-        ).await {
+        if let Err(e) = user_repo
+            .create(
+                user_id,
+                user_data.first_name.clone(),
+                user_data.last_name.clone(),
+                user_data.address.clone(),
+                user_data.email.clone(),
+                hashed_password,
+                user_data.cccd.clone(),
+                user_data.phone_number.clone(),
+                role.clone(),
+                false, // is_priority
+            )
+            .await
+        {
             errors.push(BulkUserError {
                 row: 0,
                 email: user_data.email.clone(),
@@ -437,16 +441,19 @@ pub async fn create_users_bulk(
             continue;
         }
 
-        if let Err(e) = wallet_repo.create(
-            wallet_id,
-            user_id,
-            wallet_address.clone(),
-            encrypted_private_key,
-            APP_CONFIG.chain_type.clone(),
-            wallet_address.clone(),
-            "active".to_string(),
-            APP_CONFIG.chain_id.clone(),
-        ).await {
+        if let Err(e) = wallet_repo
+            .create(
+                wallet_id,
+                user_id,
+                wallet_address.clone(),
+                encrypted_private_key,
+                APP_CONFIG.chain_type.clone(),
+                wallet_address.clone(),
+                "active".to_string(),
+                APP_CONFIG.chain_id.clone(),
+            )
+            .await
+        {
             errors.push(BulkUserError {
                 row: 0,
                 email: user_data.email.clone(),
@@ -524,26 +531,28 @@ pub async fn get_all_users(
     permission::is_admin_or_manager(&auth_claims)?;
 
     let manager_only_students = auth_claims.role == UserRole::MANAGER;
-    let (users, total) = user_repo.find_all_with_pagination(
-        params.page as u32,
-        params.page_size as u32,
-        params.role.clone(),
-        params.search.clone(),
-        manager_only_students,
-    )
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Database error: {}", e),
+    let (users, total) = user_repo
+        .find_all_with_pagination(
+            params.page as u32,
+            params.page_size as u32,
+            params.role.clone(),
+            params.search.clone(),
+            manager_only_students,
         )
-    })?;
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database error: {}", e),
+            )
+        })?;
 
     // Convert to response DTOs
     let mut user_responses = Vec::new();
     for user_model in users {
         // Get wallet info
-        let wallet_info = wallet_repo.find_by_user_id(user_model.user_id)
+        let wallet_info = wallet_repo
+            .find_by_user_id(user_model.user_id)
             .await
             .map_err(|e| {
                 (
@@ -626,9 +635,7 @@ pub async fn get_user_by_id(
     let user_id_str = user_id.to_string();
     if auth_claims.role != UserRole::ADMIN {
         // Non-admin/manager can only see themselves
-        if auth_claims.role != UserRole::MANAGER
-            && auth_claims.user_id != user_id_str
-        {
+        if auth_claims.role != UserRole::MANAGER && auth_claims.user_id != user_id_str {
             return Err((
                 StatusCode::FORBIDDEN,
                 "You can only view your own profile".to_string(),
@@ -637,7 +644,8 @@ pub async fn get_user_by_id(
     }
 
     // Get user with wallet and majors
-    let (target_user, wallet_info, major_ids) = user_repo.get_user_with_wallet_and_majors(user_id)
+    let (target_user, wallet_info, major_ids) = user_repo
+        .get_user_with_wallet_and_majors(user_id)
         .await
         .map_err(|e| {
             (
@@ -700,7 +708,8 @@ pub async fn update_user(
     let user_repo = UserRepository::new();
 
     // Get target user
-    let target_user = user_repo.find_by_id(user_id)
+    let target_user = user_repo
+        .find_by_id(user_id)
         .await
         .map_err(|e| {
             (
@@ -755,14 +764,12 @@ pub async fn update_user(
         is_first_login: None,
     };
 
-    let updated_user = user_repo.update(user_id, updates)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to update user: {}", e),
-            )
-        })?;
+    let updated_user = user_repo.update(user_id, updates).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to update user: {}", e),
+        )
+    })?;
 
     // Update major relationships if provided
     if let Some(major_ids) = payload.major_ids {
@@ -798,7 +805,8 @@ pub async fn update_user(
     }
 
     // Get updated user with full details
-    let (_, wallet_info, major_ids) = user_repo.get_user_with_wallet_and_majors(user_id)
+    let (_, wallet_info, major_ids) = user_repo
+        .get_user_with_wallet_and_majors(user_id)
         .await
         .map_err(|e| {
             (
@@ -852,7 +860,8 @@ pub async fn delete_user(
     let wallet_repo = WalletRepository::new();
 
     // Get target user
-    let target_user = user_repo.find_by_id(user_id)
+    let target_user = user_repo
+        .find_by_id(user_id)
         .await
         .map_err(|e| {
             (
@@ -874,24 +883,20 @@ pub async fn delete_user(
     permission::can_modify_user(&auth_claims, &target_role)?;
 
     // Delete wallet first
-    wallet_repo.delete_by_user_id(user_id)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to delete wallet: {}", e),
-            )
-        })?;
+    wallet_repo.delete_by_user_id(user_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to delete wallet: {}", e),
+        )
+    })?;
 
     // Delete user (this will cascade delete user_major relationships)
-    user_repo.delete(user_id)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to delete user: {}", e),
-            )
-        })?;
+    user_repo.delete(user_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to delete user: {}", e),
+        )
+    })?;
 
     Ok((
         StatusCode::OK,
@@ -901,4 +906,3 @@ pub async fn delete_user(
         })),
     ))
 }
-

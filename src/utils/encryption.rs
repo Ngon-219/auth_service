@@ -1,14 +1,14 @@
-use aes_gcm::{
-    aead::{Aead, AeadCore, KeyInit, OsRng},
-    Aes256Gcm, Nonce,
-};
-use anyhow::{Context, Result};
-use base64::{engine::general_purpose, Engine};
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
+use aes_gcm::{
+    Aes256Gcm, Nonce,
+    aead::{Aead, AeadCore, KeyInit, OsRng},
+};
 use anyhow::anyhow;
+use anyhow::{Context, Result};
+use base64::{Engine, engine::general_purpose};
 use rand::Rng;
-use scrypt::{scrypt, Params};
+use scrypt::{Params, scrypt};
 
 const NONCE_SIZE: usize = 12; // 96 bits for AES-GCM
 
@@ -21,18 +21,18 @@ pub fn encrypt_private_key(private_key: &str, encryption_key: &str) -> Result<St
         key
     };
 
-    let cipher = Aes256Gcm::new_from_slice(&key_bytes)
-        .context("Failed to create cipher from key")?;
-    
+    let cipher =
+        Aes256Gcm::new_from_slice(&key_bytes).context("Failed to create cipher from key")?;
+
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-    
+
     let ciphertext = cipher
         .encrypt(&nonce, private_key.as_bytes())
         .map_err(|_| anyhow::anyhow!("Failed to encrypt private key"))?;
-    
+
     let mut encrypted_data = nonce.to_vec();
     encrypted_data.extend_from_slice(&ciphertext);
-    
+
     Ok(general_purpose::STANDARD.encode(&encrypted_data))
 }
 
@@ -45,20 +45,20 @@ pub fn decrypt_private_key(encrypted_data: &str, encryption_key: &str) -> Result
         key
     };
 
-    let cipher = Aes256Gcm::new_from_slice(&key_bytes)
-        .context("Failed to create cipher from key")?;
-    
+    let cipher =
+        Aes256Gcm::new_from_slice(&key_bytes).context("Failed to create cipher from key")?;
+
     let encrypted_bytes = general_purpose::STANDARD
         .decode(encrypted_data)
         .context("Failed to decode base64 encrypted data")?;
-    
+
     if encrypted_bytes.len() < NONCE_SIZE {
         anyhow::bail!("Encrypted data too short");
     }
 
     let nonce = Nonce::from_slice(&encrypted_bytes[..NONCE_SIZE]);
     let ciphertext = &encrypted_bytes[NONCE_SIZE..];
-    
+
     let plaintext = cipher
         .decrypt(nonce, ciphertext)
         .map_err(|_| anyhow::anyhow!("Failed to decrypt private key"))?;
@@ -93,8 +93,7 @@ pub fn decrypt(encryption_key: &str, encrypted_text: &str) -> anyhow::Result<Str
     let iv: &[u8; 16] = &encrypted_bytes[encrypted_bytes.len() - 16..].try_into()?;
     let encrypted_data = &encrypted_bytes[16..encrypted_bytes.len() - 16];
 
-    let params = Params::new(14, 8, 1, 32)
-        .map_err(|err| anyhow!("[decrypt] err={:?}", err))?;
+    let params = Params::new(14, 8, 1, 32).map_err(|err| anyhow!("[decrypt] err={:?}", err))?;
 
     let mut key = [0u8; 32];
     scrypt(encryption_key_bytes, salt, &params, &mut key)
@@ -105,14 +104,12 @@ pub fn decrypt(encryption_key: &str, encrypted_text: &str) -> anyhow::Result<Str
     Ok(decipher_string)
 }
 
-
 pub fn encrypt(encryption_key: &str, plain_text: &str) -> anyhow::Result<String> {
     let encryption_key_bytes = encryption_key.as_bytes();
     let mut salt = [0u8; 16];
     rand::rng().fill(&mut salt);
 
-    let params = Params::new(14, 8, 1, 32)
-        .map_err(|err| anyhow!("[encrypt] err={:?}", err))?;
+    let params = Params::new(14, 8, 1, 32).map_err(|err| anyhow!("[encrypt] err={:?}", err))?;
 
     let mut key = [0u8; 32];
     scrypt(encryption_key_bytes, &salt, &params, &mut key)
@@ -148,4 +145,3 @@ mod tests {
         assert_eq!(decrypted, private_key);
     }
 }
-

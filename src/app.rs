@@ -1,8 +1,8 @@
 use crate::api_docs::ApiDoc;
 use crate::config::APP_CONFIG;
+use crate::middleware::http_logger::http_logger;
 use crate::routes;
 use crate::routes::health::route::create_route;
-use crate::middleware::http_logger::http_logger;
 use axum::Router;
 use axum::middleware;
 use http::header;
@@ -22,6 +22,7 @@ pub async fn create_app() -> anyhow::Result<Router> {
         .merge(routes::majors::create_route())
         .merge(routes::managers::create_route())
         .merge(routes::students::create_route())
+        .merge(routes::upload::route::create_route())
         .merge(routes::user_mfa::route::create_route());
 
     // Add Swagger UI
@@ -39,7 +40,7 @@ pub async fn create_app() -> anyhow::Result<Router> {
     eprintln!("🔧 Applying HTTP logger middleware to router...");
     let router = router.layer(middleware::from_fn(http_logger));
     eprintln!("✅ HTTP logger middleware applied successfully!");
-    
+
     // Apply Tower middleware stack
     let middleware = ServiceBuilder::new()
         .layer(PropagateHeaderLayer::new(header::HeaderName::from_static(

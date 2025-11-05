@@ -3,9 +3,9 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use super::service::BlockchainService;
+use crate::config::APP_CONFIG;
 use crate::entities::wallet;
 use crate::utils::encryption::decrypt_private_key;
-use crate::config::APP_CONFIG;
 
 pub async fn get_user_private_key(db: &DatabaseConnection, user_id: &Uuid) -> Result<String> {
     let wallet_info = wallet::Entity::find()
@@ -14,7 +14,7 @@ pub async fn get_user_private_key(db: &DatabaseConnection, user_id: &Uuid) -> Re
         .await
         .context("Failed to query wallet")?
         .ok_or_else(|| anyhow::anyhow!("Wallet not found for user"))?;
-    
+
     decrypt_private_key(&wallet_info.private_key, &APP_CONFIG.encryption_key)
         .context("Failed to decrypt private key")
 }

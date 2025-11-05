@@ -1,8 +1,10 @@
-use sea_orm::{DatabaseConnection, EntityTrait, ColumnTrait, QueryFilter, ActiveModelTrait, Set, DeleteResult};
-use uuid::Uuid;
 use crate::entities::wallet;
 use crate::static_service::DATABASE_CONNECTION;
 use anyhow::Result;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DeleteResult, EntityTrait, QueryFilter, Set,
+};
+use uuid::Uuid;
 
 pub struct WalletRepository;
 
@@ -17,10 +19,7 @@ impl WalletRepository {
             .expect("DATABASE_CONNECTION not set")
     }
 
-    pub async fn find_by_user_id(
-        &self,
-        user_id: Uuid,
-    ) -> Result<Option<wallet::Model>> {
+    pub async fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<wallet::Model>> {
         let db = self.get_connection();
         let wallet_info = wallet::Entity::find()
             .filter(wallet::Column::UserId.eq(user_id))
@@ -29,10 +28,7 @@ impl WalletRepository {
         Ok(wallet_info)
     }
 
-    pub async fn find_by_address(
-        &self,
-        address: &str,
-    ) -> Result<Option<wallet::Model>> {
+    pub async fn find_by_address(&self, address: &str) -> Result<Option<wallet::Model>> {
         let db = self.get_connection();
         let wallet_info = wallet::Entity::find()
             .filter(wallet::Column::Address.eq(address))
@@ -72,10 +68,7 @@ impl WalletRepository {
         Ok(result)
     }
 
-    pub async fn delete_by_user_id(
-        &self,
-        user_id: Uuid,
-    ) -> Result<DeleteResult> {
+    pub async fn delete_by_user_id(&self, user_id: Uuid) -> Result<DeleteResult> {
         let db = self.get_connection();
         let result = wallet::Entity::delete_many()
             .filter(wallet::Column::UserId.eq(user_id))
