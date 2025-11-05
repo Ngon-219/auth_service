@@ -1,4 +1,4 @@
-use sea_orm_migration::{prelude::*};
+use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -34,7 +34,7 @@ impl MigrationTrait for Migration {
                             .to_tbl(Department::Table)
                             .to_col(Department::DepartmentId)
                             .on_delete(ForeignKeyAction::SetNull)
-                            .on_update(ForeignKeyAction::Cascade)
+                            .on_update(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),
             )
@@ -90,7 +90,7 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Reverse operations
-        
+
         // 1. Drop user_major table
         manager
             .drop_table(Table::drop().table(UserMajor::Table).to_owned())
@@ -121,9 +121,21 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(MajorDepartmentUser::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(MajorDepartmentUser::MajorId).uuid().not_null())
-                    .col(ColumnDef::new(MajorDepartmentUser::DepartmentId).uuid().not_null())
-                    .col(ColumnDef::new(MajorDepartmentUser::UserId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(MajorDepartmentUser::MajorId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MajorDepartmentUser::DepartmentId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MajorDepartmentUser::UserId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(MajorDepartmentUser::CreateAt)
                             .timestamp()
@@ -153,7 +165,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_mdu_department")
-                            .from(MajorDepartmentUser::Table, MajorDepartmentUser::DepartmentId)
+                            .from(
+                                MajorDepartmentUser::Table,
+                                MajorDepartmentUser::DepartmentId,
+                            )
                             .to(Department::Table, Department::DepartmentId)
                             .on_delete(ForeignKeyAction::Cascade)
                             .on_update(ForeignKeyAction::Cascade),
@@ -211,4 +226,3 @@ enum MajorDepartmentUser {
     CreateAt,
     UpdatedAt,
 }
-

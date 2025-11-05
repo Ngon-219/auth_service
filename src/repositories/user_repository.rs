@@ -126,10 +126,11 @@ impl UserRepository {
         phone_number: String,
         role: RoleEnum,
         is_priority: bool,
+        student_code: Option<String>,
     ) -> Result<user::Model> {
         let db = self.get_connection();
         let now = chrono::Utc::now().naive_utc();
-        let user_model = user::ActiveModel {
+        let mut user_model = user::ActiveModel {
             user_id: Set(user_id),
             first_name: Set(first_name),
             last_name: Set(last_name),
@@ -143,7 +144,13 @@ impl UserRepository {
             create_at: Set(now),
             update_at: Set(now),
             role: Set(role),
+            ..Default::default()
         };
+
+        // Set student_code if provided (entity must have this field)
+        if let Some(code) = student_code {
+            user_model.student_code = Set(Some(code));
+        }
 
         let result = user_model.insert(db).await?;
         Ok(result)

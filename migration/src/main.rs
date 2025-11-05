@@ -1,5 +1,5 @@
-use sea_orm_migration::prelude::*;
 use migration::Migrator;
+use sea_orm_migration::prelude::*;
 
 #[tokio::main]
 async fn main() {
@@ -9,5 +9,7 @@ async fn main() {
         .await
         .expect("Failed to connect to the database");
 
-    Migrator::up(&connection, None).await.expect("Migration failed");
+    Migrator::up(&connection, None)
+        .await
+        .expect("Migration failed");
 }

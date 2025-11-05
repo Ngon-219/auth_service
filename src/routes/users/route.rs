@@ -51,6 +51,16 @@ pub async fn create_user(
     AuthClaims(auth_claims): AuthClaims,
     Json(payload): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<UserResponse>), (StatusCode, String)> {
+    // Validate student_code is required for students
+    if payload.role == RoleEnum::Student {
+        if payload.student_code.is_none() || payload.student_code.as_ref().unwrap().is_empty() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Student code is required for students".to_string(),
+            ));
+        }
+    }
+
     let user_repo = UserRepository::new();
     let wallet_repo = WalletRepository::new();
     let user_uuid = Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
@@ -114,6 +124,7 @@ pub async fn create_user(
             payload.phone_number.clone(),
             payload.role.clone(),
             false, // is_priority
+            payload.student_code.clone(),
         )
         .await
         .map_err(|e| {
@@ -404,6 +415,20 @@ pub async fn create_users_bulk(
             }
         };
 
+        // Validate student_code is required for students
+        if role == RoleEnum::Student {
+            if user_data.student_code.is_none()
+                || user_data.student_code.as_ref().unwrap().is_empty()
+            {
+                errors.push(BulkUserError {
+                    row: 0,
+                    email: user_data.email.clone(),
+                    error: "Student code is required for students".to_string(),
+                });
+                continue;
+            }
+        }
+
         let encrypted_private_key =
             match encrypt_private_key(&wallet_private_key, &APP_CONFIG.encryption_key) {
                 Ok(encrypted) => encrypted,
@@ -430,6 +455,7 @@ pub async fn create_users_bulk(
                 user_data.phone_number.clone(),
                 role.clone(),
                 false, // is_priority
+                user_data.student_code.clone(),
             )
             .await
         {

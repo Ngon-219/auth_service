@@ -1,4 +1,4 @@
-use axum::{extract::Multipart, response::IntoResponse, routing::post, Router};
+use axum::{Router, extract::Multipart, response::IntoResponse, routing::post};
 use utoipa::ToSchema;
 
 use crate::utils::upload::upload_chunk;
@@ -36,4 +36,3 @@ pub struct UploadChunkResponse {
 pub async fn upload_file_chunk(multipart: Multipart) -> impl IntoResponse {
     upload_chunk(multipart).await
 }
-

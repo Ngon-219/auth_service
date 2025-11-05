@@ -18,11 +18,7 @@ impl MigrationTrait for Migration {
                             .primary_key()
                             .extra("DEFAULT gen_random_uuid()".to_string()),
                     )
-                    .col(
-                        ColumnDef::new(OtpVerify::UserId)
-                            .uuid()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(OtpVerify::UserId).uuid().not_null())
                     .col(ColumnDef::new(OtpVerify::OtpCode).string().not_null())
                     .col(ColumnDef::new(OtpVerify::Email).string().not_null())
                     .col(ColumnDef::new(OtpVerify::Purpose).string().not_null())
@@ -123,4 +119,3 @@ enum User {
     Table,
     UserId,
 }
-

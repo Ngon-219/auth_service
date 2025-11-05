@@ -96,4 +96,3 @@ enum User {
     Table,
     UserId,
 }
-

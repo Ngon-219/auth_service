@@ -1,5 +1,5 @@
-use sea_orm_migration::{prelude::*};
 use crate::extension::postgres::Type;
+use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -40,10 +40,20 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(User::Address).string().not_null())
                     .col(ColumnDef::new(User::Email).string().not_null().unique_key())
                     .col(ColumnDef::new(User::Password).string().not_null())
-                    .col(ColumnDef::new(User::IsPriority).boolean().not_null().default(false))
+                    .col(
+                        ColumnDef::new(User::IsPriority)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
                     .col(ColumnDef::new(User::Cccd).string().not_null())
                     .col(ColumnDef::new(User::PhoneNumber).string().not_null())
-                    .col(ColumnDef::new(User::IsFirstLogin).boolean().not_null().default(true))
+                    .col(
+                        ColumnDef::new(User::IsFirstLogin)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
                     .col(
                         ColumnDef::new(User::CreateAt)
                             .timestamp()
@@ -58,12 +68,15 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(User::Role)
-                            .enumeration(RoleEnum::Table, [
-                                RoleEnum::Admin,
-                                RoleEnum::Manager,
-                                RoleEnum::Teacher,
-                                RoleEnum::Student,
-                            ])
+                            .enumeration(
+                                RoleEnum::Table,
+                                [
+                                    RoleEnum::Admin,
+                                    RoleEnum::Manager,
+                                    RoleEnum::Teacher,
+                                    RoleEnum::Student,
+                                ],
+                            )
                             .not_null(),
                     )
                     .to_owned(),
@@ -83,7 +96,12 @@ impl MigrationTrait for Migration {
                             .primary_key()
                             .extra("DEFAULT gen_random_uuid()".to_string()),
                     )
-                    .col(ColumnDef::new(Wallet::UserId).uuid().not_null().unique_key())
+                    .col(
+                        ColumnDef::new(Wallet::UserId)
+                            .uuid()
+                            .not_null()
+                            .unique_key(),
+                    )
                     .col(ColumnDef::new(Wallet::Address).string().not_null())
                     .col(ColumnDef::new(Wallet::PrivateKey).string().not_null())
                     .col(ColumnDef::new(Wallet::ChainType).string().not_null())
@@ -160,7 +178,11 @@ impl MigrationTrait for Migration {
                             .extra("DEFAULT gen_random_uuid()".to_string()),
                     )
                     .col(ColumnDef::new(Department::Name).string().not_null())
-                    .col(ColumnDef::new(Department::FoundingDate).timestamp().not_null())
+                    .col(
+                        ColumnDef::new(Department::FoundingDate)
+                            .timestamp()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(Department::Dean).string().not_null())
                     .col(
                         ColumnDef::new(Department::CreateAt)
@@ -184,9 +206,21 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(MajorDepartmentUser::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(MajorDepartmentUser::MajorId).uuid().not_null())
-                    .col(ColumnDef::new(MajorDepartmentUser::DepartmentId).uuid().not_null())
-                    .col(ColumnDef::new(MajorDepartmentUser::UserId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(MajorDepartmentUser::MajorId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MajorDepartmentUser::DepartmentId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MajorDepartmentUser::UserId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(MajorDepartmentUser::CreateAt)
                             .timestamp()
@@ -216,7 +250,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_mdu_department")
-                            .from(MajorDepartmentUser::Table, MajorDepartmentUser::DepartmentId)
+                            .from(
+                                MajorDepartmentUser::Table,
+                                MajorDepartmentUser::DepartmentId,
+                            )
                             .to(Department::Table, Department::DepartmentId)
                             .on_delete(ForeignKeyAction::Cascade)
                             .on_update(ForeignKeyAction::Cascade),

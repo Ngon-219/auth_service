@@ -62,13 +62,25 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Documents::UserId).uuid().not_null())
                     .col(ColumnDef::new(Documents::IssuerId).uuid().not_null())
                     .col(ColumnDef::new(Documents::DocumentTypeId).uuid().not_null())
-                    .col(ColumnDef::new(Documents::BlockchainDocId).string_len(66).null())
+                    .col(
+                        ColumnDef::new(Documents::BlockchainDocId)
+                            .string_len(66)
+                            .null(),
+                    )
                     .col(ColumnDef::new(Documents::TokenId).big_integer().null())
                     .col(ColumnDef::new(Documents::TxHash).string_len(66).null())
-                    .col(ColumnDef::new(Documents::ContractAddress).string_len(42).not_null())
+                    .col(
+                        ColumnDef::new(Documents::ContractAddress)
+                            .string_len(42)
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(Documents::IpfsHash).string().null())
                     .col(ColumnDef::new(Documents::PdfIpfsHash).string().null())
-                    .col(ColumnDef::new(Documents::DocumentHash).string_len(66).null())
+                    .col(
+                        ColumnDef::new(Documents::DocumentHash)
+                            .string_len(66)
+                            .null(),
+                    )
                     .col(ColumnDef::new(Documents::Metadata).custom("jsonb").null())
                     .col(
                         ColumnDef::new(Documents::Status)
@@ -187,9 +199,17 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(VotingEvents::EventName).string().not_null())
                     .col(ColumnDef::new(VotingEvents::Description).text().not_null())
-                    .col(ColumnDef::new(VotingEvents::CreatedAt).timestamp().not_null())
+                    .col(
+                        ColumnDef::new(VotingEvents::CreatedAt)
+                            .timestamp()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(VotingEvents::EndTime).timestamp().not_null())
-                    .col(ColumnDef::new(VotingEvents::CreatedByAddress).string().not_null())
+                    .col(
+                        ColumnDef::new(VotingEvents::CreatedByAddress)
+                            .string()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(VotingEvents::CreatedByUserId).uuid().null())
                     .col(
                         ColumnDef::new(VotingEvents::Options)
@@ -375,7 +395,12 @@ impl MigrationTrait for Migration {
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Drop indexes first
         manager
-            .drop_index(Index::drop().name("idx_votes_user_id").table(Votes::Table).to_owned())
+            .drop_index(
+                Index::drop()
+                    .name("idx_votes_user_id")
+                    .table(Votes::Table)
+                    .to_owned(),
+            )
             .await?;
         manager
             .drop_index(
@@ -394,7 +419,12 @@ impl MigrationTrait for Migration {
             )
             .await?;
         manager
-            .drop_index(Index::drop().name("idx_votes_event_id").table(Votes::Table).to_owned())
+            .drop_index(
+                Index::drop()
+                    .name("idx_votes_event_id")
+                    .table(Votes::Table)
+                    .to_owned(),
+            )
             .await?;
         manager
             .drop_index(
