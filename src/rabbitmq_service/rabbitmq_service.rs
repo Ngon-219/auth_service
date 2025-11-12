@@ -1,6 +1,7 @@
 use crate::config::APP_CONFIG;
 use lapin::{BasicProperties, Connection, ConnectionProperties, options::*};
 use serde_json::json;
+use crate::rabbitmq_service::consumers::REGISTER_NEW_USER_CHANNEL;
 
 pub struct RabbitMQService;
 
@@ -22,6 +23,24 @@ impl RabbitMQService {
         channel
             .queue_declare(
                 "mail_service",
+                QueueDeclareOptions::default(),
+                Default::default(),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create RabbitMQ queue: {}", e))?;
+
+        Ok(())
+    }
+
+    pub async fn create_register_new_user_channel(connection: &Connection) -> Result<(), anyhow::Error> {
+        let channel = connection
+            .create_channel()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create RabbitMQ channel: {}", e))?;
+
+        channel
+            .queue_declare(
+                REGISTER_NEW_USER_CHANNEL,
                 QueueDeclareOptions::default(),
                 Default::default(),
             )

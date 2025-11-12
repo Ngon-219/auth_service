@@ -1,6 +1,6 @@
 use crate::config::{APP_CONFIG, MFA_MAX_FAIL_ATTEMPTS};
 use crate::entities::user_mfa;
-use crate::redis_service::MfaRedisService;
+use crate::redis_service::redis_service::MfaRedisService;
 use crate::repositories::mfa_verify_result::MfaVerifyResult;
 use crate::static_service::DATABASE_CONNECTION;
 use crate::utils::encryption::decrypt;

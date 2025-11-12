@@ -523,6 +523,7 @@ dependencies = [
  "sea-orm",
  "serde",
  "serde_json",
+ "socketioxide-emitter",
  "tokio 1.48.0",
  "tonic",
  "tonic-build",
@@ -2052,6 +2053,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
 dependencies = [
  "cfg-if 1.0.1",
+]
+
+[[package]]
+name = "engineioxide-core"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a6512b1bc8dfb74d61b55878d712082be39a960abee8590f310723587de343e"
+dependencies = [
+ "base64 0.22.1",
+ "bytes 1.10.1",
+ "rand 0.9.2",
+ "serde",
 ]
 
 [[package]]
@@ -5759,6 +5772,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "rmp"
+version = "0.8.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "228ed7c16fa39782c3b3468e974aec2795e9089153cd08ee2e9aefb3613334c4"
+dependencies = [
+ "byteorder",
+ "num-traits",
+ "paste",
+]
+
+[[package]]
+name = "rmp-serde"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52e599a477cf9840e92f2cde9a7189e67b42c57532749bf90aea6ec10facd4db"
+dependencies = [
+ "byteorder",
+ "rmp",
+ "serde",
+]
+
+[[package]]
 name = "rsa"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6597,6 +6632,46 @@ checksum = "17129e116933cf371d018bb80ae557e889637989d8638274fb25622827b03881"
 dependencies = [
  "libc",
  "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "socketioxide-core"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93414eb4c54a5fd9dddc1fb80b56a00a3b0cbec60f5d7e3c479ccea73ac258b0"
+dependencies = [
+ "arbitrary",
+ "bytes 1.10.1",
+ "engineioxide-core",
+ "futures-core",
+ "serde",
+ "smallvec",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "socketioxide-emitter"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd85c8f52bf06e65b08853b39bb9adaa9d70a4328b931bd085a0828545ff44d6"
+dependencies = [
+ "rmp-serde",
+ "serde",
+ "socketioxide-core",
+ "socketioxide-parser-common",
+]
+
+[[package]]
+name = "socketioxide-parser-common"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9847d1b4ee0e5d419c78a9a3f29b204aeb0970303595fc24be045f244f076938"
+dependencies = [
+ "bytes 1.10.1",
+ "itoa 1.0.15",
+ "serde",
+ "serde_json",
+ "socketioxide-core",
 ]
 
 [[package]]
