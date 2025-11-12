@@ -216,6 +216,28 @@ impl UserRepository {
 
         Ok(result)
     }
+
+    pub async fn delete_by_student_code(&self, student_code: &str) -> Result<DeleteResult> {
+        let db = self.get_connection();
+        let user = user::Entity::find()
+            .filter(user::Column::StudentCode.eq(student_code))
+            .one(db)
+            .await?;
+
+        if let Some(user_model) = user {
+            let user_id = user_model.user_id;
+            user_major::Entity::delete_many()
+                .filter(user_major::Column::UserId.eq(user_id))
+                .exec(db)
+                .await?;
+
+            let result = user::Entity::delete_by_id(user_id).exec(db).await?;
+
+            Ok(result)
+        } else {
+            Err(anyhow::anyhow!("User not found"))
+        }
+    }
 }
 
 pub struct UserUpdate {

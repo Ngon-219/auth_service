@@ -3,8 +3,9 @@ use std::net::SocketAddr;
 
 use auth_service::bootstrap::initialize_admin_user;
 use auth_service::grpc::start_grpc_server;
+use auth_service::rabbitmq_service::consumers::get_rabbitmq_connetion;
 use auth_service::rabbitmq_service::rabbitmq_service::RabbitMQService;
-use auth_service::redis_service::init_redis_connection;
+use auth_service::redis_service::redis_service::init_redis_connection;
 use auth_service::static_service::get_database_connection;
 use auth_service::{app, config::APP_CONFIG, utils::tracing::init_standard_tracing};
 
@@ -15,6 +16,7 @@ async fn main() -> anyhow::Result<()> {
     init_standard_tracing(env!("CARGO_CRATE_NAME"));
 
     tracing::info!("Starting application...");
+    get_rabbitmq_connetion().await;
 
     tracing::info!("Create upload folder");
     fs::create_dir_all("./uploads/temp").unwrap();

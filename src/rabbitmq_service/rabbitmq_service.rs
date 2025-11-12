@@ -1,7 +1,8 @@
 use crate::config::APP_CONFIG;
+use crate::rabbitmq_service::consumers::REGISTER_NEW_USER_CHANNEL;
+use crate::rabbitmq_service::structs::RegisterNewUserMessage;
 use lapin::{BasicProperties, Connection, ConnectionProperties, options::*};
 use serde_json::json;
-use crate::rabbitmq_service::consumers::REGISTER_NEW_USER_CHANNEL;
 
 pub struct RabbitMQService;
 
@@ -32,7 +33,9 @@ impl RabbitMQService {
         Ok(())
     }
 
-    pub async fn create_register_new_user_channel(connection: &Connection) -> Result<(), anyhow::Error> {
+    pub async fn create_register_new_user_channel(
+        connection: &Connection,
+    ) -> Result<(), anyhow::Error> {
         let channel = connection
             .create_channel()
             .await
@@ -73,6 +76,27 @@ impl RabbitMQService {
                 "mail_service",
                 BasicPublishOptions::default(),
                 standard_msg.to_string().as_bytes(),
+                BasicProperties::default(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn publish_to_register_new_user(
+        connection: &Connection,
+        message: RegisterNewUserMessage,
+    ) -> Result<(), anyhow::Error> {
+        let serialize_msg = serde_json::to_string(&message)?;
+
+        let channel = connection.create_channel().await?;
+
+        channel
+            .basic_publish(
+                "",
+                REGISTER_NEW_USER_CHANNEL,
+                BasicPublishOptions::default(),
+                serialize_msg.as_bytes(),
                 BasicProperties::default(),
             )
             .await?;

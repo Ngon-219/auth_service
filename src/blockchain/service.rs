@@ -12,7 +12,6 @@ pub struct BlockchainService {
 }
 
 impl BlockchainService {
-    /// Create BlockchainService with private key (no default/hardcoded wallet)
     pub async fn new(private_key: &str) -> Result<Self> {
         let provider = Provider::<Http>::try_from(&APP_CONFIG.blockchain_rpc_url)
             .context("Failed to create provider")?;

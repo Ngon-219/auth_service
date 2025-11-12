@@ -21,6 +21,9 @@ use crate::entities::sea_orm_active_enums::RoleEnum;
 use crate::entities::user_major;
 use crate::extractor::AuthClaims;
 use crate::middleware::permission;
+use crate::rabbitmq_service::consumers::RABBITMQ_CONNECTION;
+use crate::rabbitmq_service::rabbitmq_service::RabbitMQService;
+use crate::rabbitmq_service::structs::RegisterNewUserMessage;
 use crate::repositories::{UserRepository, WalletRepository, user_repository::UserUpdate};
 use crate::utils::encryption::encrypt_private_key;
 
@@ -165,15 +168,21 @@ pub async fn create_user(
 
             let full_name = format!("{} {}", payload.first_name, payload.last_name);
 
-            blockchain
-                .register_student(&wallet_address, &student_code, &full_name, &payload.email)
+            let rabbit_mq_conn = RABBITMQ_CONNECTION
+                .get()
+                .expect("Failed to get rabbitmq connection");
+            let register_user_msg = RegisterNewUserMessage {
+                private_key: user_private_key,
+                wallet_address: wallet_address.clone(),
+                student_code,
+                full_name,
+                email: payload.email,
+            };
+            RabbitMQService::publish_to_register_new_user(rabbit_mq_conn, register_user_msg)
                 .await
-                .map_err(|e| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to register student on blockchain: {}", e),
-                    )
-                })?;
+                .map_err(|e| tracing::error!("Failed to publish to register new user"))
+                .ok();
+            // let rabbitmq = RabbitMQService::publish_to_register_new_user();
         }
         RoleEnum::Manager => {
             // Use addManager instead of assignRole for managers
@@ -231,7 +240,7 @@ pub async fn create_user(
         last_name: user.last_name,
         email: user.email,
         role: user.role,
-        wallet_address,
+        wallet_address: wallet_address.clone(),
         wallet_private_key: encrypted_private_key,
         is_first_login: user.is_first_login,
         created_at: user.create_at,
