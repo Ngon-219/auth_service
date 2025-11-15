@@ -2,8 +2,11 @@ use super::dto::{
     AddManagerRequest, CheckManagerRequest, ManagerListResponse, ManagerResponse,
     RemoveManagerRequest,
 };
-use crate::blockchain::get_user_blockchain_service;
+use crate::blockchain::{get_user_blockchain_service, get_user_private_key};
 use crate::extractor::AuthClaims;
+use crate::rabbitmq_service::consumers::RABBITMQ_CONNECTION;
+use crate::rabbitmq_service::rabbitmq_service::RabbitMQService;
+use crate::rabbitmq_service::structs::RemoveManagerMessage;
 use crate::repositories::UserRepository;
 use axum::{
     Json, Router,
@@ -55,23 +58,56 @@ pub async fn add_manager(
             format!("Invalid user_id: {}", e),
         )
     })?;
+    
+    // Get user email and private key
     let db = user_repo.get_connection();
-    let blockchain = get_user_blockchain_service(db, &user_id)
+    let user = user_repo
+        .find_by_id(user_id)
         .await
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to initialize blockchain service: {}", e),
+                format!("Failed to find user: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                "User not found".to_string(),
+            )
+        })?;
+    
+    let private_key = get_user_private_key(db, &user_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get private key: {}", e),
             )
         })?;
 
-    blockchain
-        .add_manager(&payload.manager_address)
+    // Publish message to RabbitMQ
+    let rabbitmq_conn = RABBITMQ_CONNECTION
+        .get()
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "RabbitMQ connection not initialized".to_string(),
+            )
+        })?;
+
+    let message = crate::rabbitmq_service::structs::RegisterNewManagerMessage {
+        private_key,
+        wallet_address: payload.manager_address.clone(),
+        email: user.email.clone(),
+    };
+
+    RabbitMQService::publish_to_register_new_manager(rabbitmq_conn, message)
         .await
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to add manager: {}", e),
+                format!("Failed to publish message: {}", e),
             )
         })?;
 
@@ -118,23 +154,55 @@ pub async fn remove_manager(
         )
     })?;
 
+    // Get user email and private key
     let db = user_repo.get_connection();
-    let blockchain = get_user_blockchain_service(db, &user_id)
+    let user = user_repo
+        .find_by_id(user_id)
         .await
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to initialize blockchain service: {}", e),
+                format!("Failed to find user: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                "User not found".to_string(),
+            )
+        })?;
+    
+    let private_key = get_user_private_key(db, &user_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get private key: {}", e),
             )
         })?;
 
-    blockchain
-        .remove_manager(&payload.manager_address)
+    // Publish message to RabbitMQ
+    let rabbitmq_conn = RABBITMQ_CONNECTION
+        .get()
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "RabbitMQ connection not initialized".to_string(),
+            )
+        })?;
+
+    let message = RemoveManagerMessage {
+        private_key,
+        manager_address: payload.manager_address.clone(),
+        email: user.email.clone(),
+    };
+
+    RabbitMQService::publish_to_remove_manager(rabbitmq_conn, message)
         .await
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to remove manager: {}", e),
+                format!("Failed to publish message: {}", e),
             )
         })?;
 

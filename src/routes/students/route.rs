@@ -9,8 +9,11 @@ use super::dto::{
     StudentAddressRequest, StudentCodeRequest, StudentIdResponse, StudentInfoResponse,
     StudentStatusResponse, SystemInfoResponse,
 };
-use crate::blockchain::get_user_blockchain_service;
+use crate::blockchain::{get_user_blockchain_service, get_user_private_key};
 use crate::extractor::AuthClaims;
+use crate::rabbitmq_service::consumers::RABBITMQ_CONNECTION;
+use crate::rabbitmq_service::rabbitmq_service::RabbitMQService;
+use crate::rabbitmq_service::structs::{ActivateStudentMessage, DeactivateStudentMessage};
 use crate::repositories::UserRepository;
 use do_an_lib::structs::token_claims::UserRole;
 
@@ -231,23 +234,56 @@ pub async fn deactivate_student(
             format!("Invalid user_id: {}", e),
         )
     })?;
+    
+    // Get user email and private key
     let db = user_repo.get_connection();
-    let blockchain = get_user_blockchain_service(db, &user_id)
+    let user = user_repo
+        .find_by_id(user_id)
         .await
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to initialize blockchain service: {}", e),
+                format!("Failed to find user: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                "User not found".to_string(),
+            )
+        })?;
+    
+    let private_key = get_user_private_key(db, &user_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get private key: {}", e),
             )
         })?;
 
-    blockchain
-        .deactivate_student(student_id)
+    // Publish message to RabbitMQ
+    let rabbitmq_conn = RABBITMQ_CONNECTION
+        .get()
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "RabbitMQ connection not initialized".to_string(),
+            )
+        })?;
+
+    let message = DeactivateStudentMessage {
+        private_key,
+        student_id,
+        email: user.email.clone(),
+    };
+
+    RabbitMQService::publish_to_deactivate_student(rabbitmq_conn, message)
         .await
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to deactivate student: {}", e),
+                format!("Failed to publish message: {}", e),
             )
         })?;
 
@@ -294,22 +330,58 @@ pub async fn activate_student(
             format!("Invalid user_id: {}", e),
         )
     })?;
+    
+    // Get user email and private key
     let db = user_repo.get_connection();
-    let blockchain = get_user_blockchain_service(db, &user_id)
+    let user = user_repo
+        .find_by_id(user_id)
         .await
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to initialize blockchain service: {}", e),
+                format!("Failed to find user: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                "User not found".to_string(),
+            )
+        })?;
+    
+    let private_key = get_user_private_key(db, &user_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get private key: {}", e),
             )
         })?;
 
-    blockchain.activate_student(student_id).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to activate student: {}", e),
-        )
-    })?;
+    // Publish message to RabbitMQ
+    let rabbitmq_conn = RABBITMQ_CONNECTION
+        .get()
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "RabbitMQ connection not initialized".to_string(),
+            )
+        })?;
+
+    let message = ActivateStudentMessage {
+        private_key,
+        student_id,
+        email: user.email.clone(),
+    };
+
+    RabbitMQService::publish_to_activate_student(rabbitmq_conn, message)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to publish message: {}", e),
+            )
+        })?;
 
     let response = StudentStatusResponse {
         student_id,

@@ -26,8 +26,21 @@ async fn main() -> anyhow::Result<()> {
 
     let rabbit_mq = RabbitMQService::new().await;
 
-    if let Ok(()) = RabbitMQService::create_mail_queue(rabbit_mq).await {
-        tracing::info!("Create rabbitmq queue successfully");
+    if let Ok(()) = RabbitMQService::create_mail_queue(rabbit_mq.clone()).await {
+        tracing::info!("Create mail queue successfully");
+    }
+
+    // Create all blockchain queues
+    if let Ok(()) = RabbitMQService::create_register_new_user_channel(&rabbit_mq).await {
+        tracing::info!("Create register new user queue successfully");
+    }
+
+    if let Ok(()) = RabbitMQService::create_register_new_manager_channel(&rabbit_mq).await {
+        tracing::info!("Create register new manager queue successfully");
+    }
+
+    if let Ok(()) = RabbitMQService::create_all_blockchain_queues(&rabbit_mq).await {
+        tracing::info!("Create all blockchain queues successfully");
     }
 
     // Initialize Redis connection

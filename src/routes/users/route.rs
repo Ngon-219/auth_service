@@ -15,7 +15,7 @@ use super::dto::{
     BulkUserError, BulkUserResponse, CreateUserRequest, ExcelUserRow, UpdateUserRequest,
     UserDetailResponse, UserListResponse, UserQueryParams, UserResponse,
 };
-use crate::blockchain::{BlockchainService, get_admin_blockchain_service, get_user_private_key};
+use crate::blockchain::{BlockchainService, get_user_private_key};
 use crate::config::APP_CONFIG;
 use crate::entities::sea_orm_active_enums::RoleEnum;
 use crate::entities::user_major;
@@ -23,7 +23,10 @@ use crate::extractor::AuthClaims;
 use crate::middleware::permission;
 use crate::rabbitmq_service::consumers::RABBITMQ_CONNECTION;
 use crate::rabbitmq_service::rabbitmq_service::RabbitMQService;
-use crate::rabbitmq_service::structs::RegisterNewUserMessage;
+use crate::rabbitmq_service::structs::{
+    AssignRoleMessage, RegisterNewManagerMessage, RegisterNewUserMessage,
+    RegisterStudentsBatchMessage,
+};
 use crate::repositories::{UserRepository, WalletRepository, user_repository::UserUpdate};
 use crate::utils::encryption::encrypt_private_key;
 
@@ -54,16 +57,6 @@ pub async fn create_user(
     AuthClaims(auth_claims): AuthClaims,
     Json(payload): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<UserResponse>), (StatusCode, String)> {
-    // Validate student_code is required for students
-    if payload.role == RoleEnum::Student {
-        if payload.student_code.is_none() || payload.student_code.as_ref().unwrap().is_empty() {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "Student code is required for students".to_string(),
-            ));
-        }
-    }
-
     let user_repo = UserRepository::new();
     let wallet_repo = WalletRepository::new();
     let user_uuid = Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
@@ -79,14 +72,6 @@ pub async fn create_user(
             format!("Invalid user_id: {}", e),
         )
     })?;
-    let blockchain = BlockchainService::new(&user_private_key)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Internal server error: {}", e),
-            )
-        })?;
 
     let hashed_password = bcrypt::hash(&payload.password, bcrypt::DEFAULT_COST).map_err(|e| {
         (
@@ -115,6 +100,18 @@ pub async fn create_user(
     let user_id = Uuid::new_v4();
     let wallet_id = Uuid::new_v4();
 
+    let student_code = if payload.role == RoleEnum::Student {
+        let lastest_student_code = UserRepository::get_latest_student_code()
+            .await
+            .expect("Failed to get student code");
+        let student_code_i64 = lastest_student_code.parse::<i64>().unwrap_or_default();
+        let student_code = student_code_i64 + 1;
+        let formated_student_code: String = format!("{:06}", student_code);
+        Some(formated_student_code)
+    } else {
+        None
+    };
+
     let user = user_repo
         .create(
             user_id,
@@ -126,8 +123,8 @@ pub async fn create_user(
             payload.cccd.clone(),
             payload.phone_number.clone(),
             payload.role.clone(),
-            false, // is_priority
-            payload.student_code.clone(),
+            false,
+            student_code.clone(),
         )
         .await
         .map_err(|e| {
@@ -156,25 +153,18 @@ pub async fn create_user(
             )
         })?;
 
-    // Register on blockchain
     match payload.role {
         RoleEnum::Student => {
-            let student_code = payload.student_code.ok_or_else(|| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    "Student code is required for students".to_string(),
-                )
-            })?;
-
             let full_name = format!("{} {}", payload.first_name, payload.last_name);
 
             let rabbit_mq_conn = RABBITMQ_CONNECTION
                 .get()
                 .expect("Failed to get rabbitmq connection");
+
             let register_user_msg = RegisterNewUserMessage {
                 private_key: user_private_key,
                 wallet_address: wallet_address.clone(),
-                student_code,
+                student_code: student_code.unwrap_or_default(),
                 full_name,
                 email: payload.email,
             };
@@ -182,16 +172,22 @@ pub async fn create_user(
                 .await
                 .map_err(|e| tracing::error!("Failed to publish to register new user"))
                 .ok();
-            // let rabbitmq = RabbitMQService::publish_to_register_new_user();
         }
         RoleEnum::Manager => {
-            // Use addManager instead of assignRole for managers
-            blockchain.add_manager(&wallet_address).await.map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Failed to add manager on blockchain: {}", e),
-                )
-            })?;
+            let rabbit_mq_conn = RABBITMQ_CONNECTION
+                .get()
+                .expect("Failed to get rabbitmq connection");
+
+            let register_new_manager = RegisterNewManagerMessage {
+                private_key: user_private_key,
+                wallet_address: wallet_address.clone(),
+                email: payload.email,
+            };
+
+            RabbitMQService::publish_to_register_new_manager(rabbit_mq_conn, register_new_manager)
+                .await
+                .map_err(|e| tracing::error!("Failed to publish to register new manager"))
+                .ok();
         }
         RoleEnum::Teacher | RoleEnum::Admin => {
             // For Teacher and Admin, use assignRole (requires owner)
@@ -201,13 +197,28 @@ pub async fn create_user(
                 _ => 0,
             };
 
-            blockchain
-                .assign_role(&wallet_address, role_code)
+            let rabbit_mq_conn = RABBITMQ_CONNECTION
+                .get()
+                .ok_or_else(|| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "RabbitMQ connection not initialized".to_string(),
+                    )
+                })?;
+
+            let assign_role_msg = AssignRoleMessage {
+                private_key: user_private_key,
+                user_address: wallet_address.clone(),
+                role: role_code,
+                email: payload.email.clone(),
+            };
+
+            RabbitMQService::publish_to_assign_role(rabbit_mq_conn, assign_role_msg)
                 .await
                 .map_err(|e| {
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to assign role on blockchain (you need to be contract owner): {}", e),
+                        format!("Failed to publish assign role message: {}", e),
                     )
                 })?;
         }
@@ -265,12 +276,6 @@ pub async fn create_users_bulk(
 ) -> Result<(StatusCode, Json<BulkUserResponse>), (StatusCode, String)> {
     let user_repo = UserRepository::new();
     let wallet_repo = WalletRepository::new();
-    let blockchain = get_admin_blockchain_service().await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to initialize blockchain service: {}", e),
-        )
-    })?;
     let mut file_data: Option<Vec<u8>> = None;
 
     // Extract file from multipart
@@ -512,20 +517,37 @@ pub async fn create_users_bulk(
 
     // Batch register students on blockchain (max 50 at a time)
     if !student_addresses.is_empty() {
+        let rabbit_mq_conn = RABBITMQ_CONNECTION
+            .get()
+            .ok_or_else(|| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "RabbitMQ connection not initialized".to_string(),
+                )
+            })?;
+
+        // Get admin private key for batch registration
+        let admin_private_key = APP_CONFIG.admin_private_key.clone();
+
         for chunk in 0..(student_addresses.len() + 49) / 50 {
             let start = chunk * 50;
             let end = std::cmp::min(start + 50, student_addresses.len());
 
-            if let Err(e) = blockchain
-                .register_students_batch(
-                    student_addresses[start..end].to_vec(),
-                    student_codes[start..end].to_vec(),
-                    student_names[start..end].to_vec(),
-                    student_emails[start..end].to_vec(),
-                )
-                .await
+            let batch_message = RegisterStudentsBatchMessage {
+                private_key: admin_private_key.clone(),
+                wallet_addresses: student_addresses[start..end].to_vec(),
+                student_codes: student_codes[start..end].to_vec(),
+                full_names: student_names[start..end].to_vec(),
+                emails: student_emails[start..end].to_vec(),
+            };
+
+            if let Err(e) = RabbitMQService::publish_to_register_students_batch(
+                rabbit_mq_conn,
+                batch_message,
+            )
+            .await
             {
-                tracing::error!("Failed to register batch on blockchain: {}", e);
+                tracing::error!("Failed to publish batch register message: {}", e);
                 // Don't fail the entire operation, just log the error
             }
         }

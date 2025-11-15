@@ -1,4 +1,5 @@
 use crate::entities::sea_orm_active_enums::RoleEnum;
+use crate::entities::user::Entity;
 use crate::entities::{user, user_major, wallet};
 use crate::static_service::DATABASE_CONNECTION;
 use anyhow::Result;
@@ -237,6 +238,42 @@ impl UserRepository {
         } else {
             Err(anyhow::anyhow!("User not found"))
         }
+    }
+
+    pub async fn delete_by_email(&self, email: &str) -> Result<DeleteResult> {
+        let db = self.get_connection();
+        let user = user::Entity::find()
+            .filter(user::Column::Email.eq(email))
+            .one(db)
+            .await?;
+
+        if let Some(user_model) = user {
+            let user_id = user_model.user_id;
+            user_major::Entity::delete_many()
+                .filter(user_major::Column::UserId.eq(user_id))
+                .exec(db)
+                .await?;
+
+            let result = user::Entity::delete_by_id(user_id).exec(db).await?;
+
+            Ok(result)
+        } else {
+            Err(anyhow::anyhow!("User not found"))
+        }
+    }
+
+    pub async fn get_latest_student_code() -> Result<String> {
+        let db = UserRepository.get_connection();
+        let user = user::Entity::find()
+            .order_by_desc(user::Column::CreateAt)
+            .one(db)
+            .await?;
+
+        if let Some(user) = user {
+            return Ok(user.student_code.unwrap());
+        }
+
+        Err(anyhow::anyhow!("User not found"))
     }
 }
 

@@ -8,7 +8,7 @@ pub fn init_standard_tracing(crate_name: &str) {
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
                 // Include auth_service module explicitly for HTTP logger
-                format!("{crate_name}={level},auth_service::middleware={level},tower_http={level},api_wallet_evm={level}").into()
+                format!("{crate_name}={level},auth_service::middleware={level},tower_http={level},api_wallet_evm={level},test_kafka={level}").into()
             }),
         )
         .with(
