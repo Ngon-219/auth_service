@@ -3,10 +3,7 @@ use crate::entities::user::Entity;
 use crate::entities::{user, user_major, wallet};
 use crate::static_service::DATABASE_CONNECTION;
 use anyhow::Result;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DeleteResult, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, DeleteResult, EntityTrait, Iden, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set};
 use uuid::Uuid;
 
 pub struct UserRepository;
@@ -24,7 +21,10 @@ impl UserRepository {
 
     pub async fn find_by_id(&self, user_id: Uuid) -> Result<Option<user::Model>> {
         let db = self.get_connection();
-        let user = user::Entity::find_by_id(user_id).one(db).await?;
+        let user = user::Entity::find_by_id(user_id)
+            .filter(user::Column::DeletedAt.is_null())
+            .one(db)
+            .await?;
         Ok(user)
     }
 
@@ -32,6 +32,7 @@ impl UserRepository {
         let db = self.get_connection();
         let user = user::Entity::find()
             .filter(user::Column::Email.eq(email))
+            .filter(user::Column::DeletedAt.is_null())
             .one(db)
             .await?;
         Ok(user)
@@ -46,7 +47,8 @@ impl UserRepository {
         manager_only_students: bool,
     ) -> Result<(Vec<user::Model>, u64)> {
         let db = self.get_connection();
-        let mut query = user::Entity::find();
+        let mut query = user::Entity::find()
+            .filter(user::Column::DeletedAt.is_null());
 
         // Manager only sees students
         if manager_only_students {
@@ -88,6 +90,7 @@ impl UserRepository {
         &self,
         user_id: Uuid,
     ) -> Result<Option<(user::Model, Option<wallet::Model>, Vec<Uuid>)>> {
+        // find_by_id already filters deleted_at IS NULL
         let user = self.find_by_id(user_id).await?;
 
         if let Some(user_model) = user {
@@ -218,6 +221,25 @@ impl UserRepository {
         Ok(result)
     }
 
+    /// Soft delete user by setting deleted_at timestamp
+    pub async fn soft_delete(&self, user_id: Uuid) -> Result<user::Model> {
+        let db = self.get_connection();
+        let user = user::Entity::find_by_id(user_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("User not found"))?;
+
+        let mut active_user: user::ActiveModel = user.into();
+        let now = chrono::Utc::now().naive_utc();
+        
+        // Set deleted_at to mark as soft deleted
+        active_user.deleted_at = Set(Some(now));
+        active_user.update_at = Set(now);
+        
+        let result = active_user.update(db).await?;
+        Ok(result)
+    }
+
     pub async fn delete_by_student_code(&self, student_code: &str) -> Result<DeleteResult> {
         let db = self.get_connection();
         let user = user::Entity::find()
@@ -265,12 +287,13 @@ impl UserRepository {
     pub async fn get_latest_student_code() -> Result<String> {
         let db = UserRepository.get_connection();
         let user = user::Entity::find()
+            // .filter(user::Column::DeletedAt.is_null())
             .order_by_desc(user::Column::CreateAt)
             .one(db)
             .await?;
 
         if let Some(user) = user {
-            return Ok(user.student_code.unwrap());
+            return Ok(user.student_code.unwrap_or("000000".to_string()));
         }
 
         Err(anyhow::anyhow!("User not found"))

@@ -58,6 +58,7 @@ pub async fn initialize_admin_user(db: &DatabaseConnection) -> Result<()> {
         update_at: Set(now),
         role: Set(RoleEnum::Admin),
         student_code: Set(None),
+        deleted_at: Set(None),
     };
 
     admin_user

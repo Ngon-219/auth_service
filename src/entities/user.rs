@@ -28,6 +28,7 @@ pub struct Model {
     pub is_first_login: bool,
     pub create_at: DateTime,
     pub update_at: DateTime,
+    pub deleted_at: Option<DateTime>,
     pub role: RoleEnum,
     pub student_code: Option<String>,
 }
@@ -46,6 +47,7 @@ pub enum Column {
     IsFirstLogin,
     CreateAt,
     UpdateAt,
+    DeletedAt,
     Role,
     StudentCode,
 }
@@ -87,6 +89,7 @@ impl ColumnTrait for Column {
             Self::IsFirstLogin => ColumnType::Boolean.def(),
             Self::CreateAt => ColumnType::DateTime.def(),
             Self::UpdateAt => ColumnType::DateTime.def(),
+            Self::DeletedAt => ColumnType::DateTime.def().null(),
             Self::Role => RoleEnum::db_type().get_column_type().to_owned().def(),
             Self::StudentCode => ColumnType::String(StringLen::None).def().null(),
         }

@@ -27,7 +27,8 @@ pub async fn login(
 ) -> Result<(StatusCode, Json<LoginResponse>), (StatusCode, String)> {
     let user_repo = UserRepository::new();
 
-    // Find user by email
+    // Find user by email (this already filters deleted_at IS NULL)
+    // If user is deleted, find_by_email will return None
     let user_info = user_repo
         .find_by_email(&payload.email)
         .await
@@ -40,7 +41,7 @@ pub async fn login(
         .ok_or_else(|| {
             (
                 StatusCode::UNAUTHORIZED,
-                "Invalid email or password".to_string(),
+                "Invalid email or password, or account has been deleted".to_string(),
             )
         })?;
 

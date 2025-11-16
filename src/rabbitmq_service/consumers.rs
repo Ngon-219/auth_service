@@ -128,15 +128,22 @@ impl RabbitMqConsumer {
                             Err(e) => {
                                 tracing::error!("Failed to register new student: {}", e);
                                 let user_repo = UserRepository::new();
-                                if let Err(delete_err) = UserRepository::delete_by_student_code(
-                                    &user_repo,
-                                    &deserialize_payload.student_code,
-                                )
-                                .await
+                                tracing::info!(
+                                    "Attempting to delete user with student_code: {} after blockchain registration failed",
+                                    deserialize_payload.student_code
+                                );
+                                if let Err(delete_err) = user_repo
+                                    .delete_by_student_code(&deserialize_payload.student_code)
+                                    .await
                                 {
                                     tracing::error!(
                                         "Failed to delete user after blockchain error: {}",
                                         delete_err
+                                    );
+                                } else {
+                                    tracing::info!(
+                                        "Successfully deleted user with student_code: {} after blockchain registration failed",
+                                        deserialize_payload.student_code
                                     );
                                 }
 
@@ -251,15 +258,22 @@ impl RabbitMqConsumer {
                             Err(e) => {
                                 tracing::error!("Failed to register new manager: {}", e);
                                 let user_repo = UserRepository::new();
-                                if let Err(delete_err) = UserRepository::delete_by_email(
-                                    &user_repo,
-                                    &deserialize_payload.email,
-                                )
+                                tracing::info!(
+                                    "Attempting to delete user with email: {} after blockchain registration failed",
+                                    deserialize_payload.email
+                                );
+                                if let Err(delete_err) = user_repo
+                                    .delete_by_email(&deserialize_payload.email)
                                     .await
                                 {
                                     tracing::error!(
                                         "Failed to delete user after blockchain error: {}",
                                         delete_err
+                                    );
+                                } else {
+                                    tracing::info!(
+                                        "Successfully deleted user with email: {} after blockchain registration failed",
+                                        deserialize_payload.email
                                     );
                                 }
 

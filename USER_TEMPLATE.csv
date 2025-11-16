@@ -1,5 +1,0 @@
-first_name,last_name,address,email,password,cccd,phone_number,role,student_code
-Nguyen,Van A,123 Nguyen Trai Hanoi,student1@example.com,password123,001234567890,0912345678,student,SV001
-Tran,Thi B,456 Le Loi HCMC,teacher1@example.com,password456,001234567891,0912345679,teacher,
-Le,Van C,789 Tran Phu Da Nang,student2@example.com,password789,001234567892,0912345680,student,SV002
-

@@ -23,7 +23,7 @@ impl RabbitMQService {
         connection
     }
 
-    pub async fn create_mail_queue(connection: Connection) -> Result<(), anyhow::Error> {
+    pub async fn create_mail_queue(connection: &Connection) -> Result<(), anyhow::Error> {
         let channel = connection
             .create_channel()
             .await

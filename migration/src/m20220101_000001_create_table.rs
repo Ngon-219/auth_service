@@ -67,6 +67,11 @@ impl MigrationTrait for Migration {
                             .extra("DEFAULT CURRENT_TIMESTAMP".to_string()),
                     )
                     .col(
+                        ColumnDef::new(User::DeletedAt)
+                            .timestamp()
+                            .null(),
+                    )
+                    .col(
                         ColumnDef::new(User::Role)
                             .enumeration(
                                 RoleEnum::Table,
@@ -328,6 +333,7 @@ enum User {
     IsFirstLogin,
     CreateAt,
     UpdateAt,
+    DeletedAt,
     Role,
 }
 

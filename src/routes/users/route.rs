@@ -24,8 +24,8 @@ use crate::middleware::permission;
 use crate::rabbitmq_service::consumers::RABBITMQ_CONNECTION;
 use crate::rabbitmq_service::rabbitmq_service::RabbitMQService;
 use crate::rabbitmq_service::structs::{
-    AssignRoleMessage, RegisterNewManagerMessage, RegisterNewUserMessage,
-    RegisterStudentsBatchMessage,
+    AssignRoleMessage, DeactivateStudentMessage, RegisterNewManagerMessage,
+    RegisterNewUserMessage, RegisterStudentsBatchMessage, RemoveManagerMessage,
 };
 use crate::repositories::{UserRepository, WalletRepository, user_repository::UserUpdate};
 use crate::utils::encryption::encrypt_private_key;
@@ -939,19 +939,121 @@ pub async fn delete_user(
     // Check permission
     permission::can_modify_user(&auth_claims, &target_role)?;
 
-    // Delete wallet first
-    wallet_repo.delete_by_user_id(user_id).await.map_err(|e| {
+    // Get wallet address for blockchain operations
+    let wallet_info = wallet_repo
+        .find_by_user_id(user_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get wallet: {}", e),
+            )
+        })?;
+
+    let wallet_address = wallet_info
+        .map(|w| w.address)
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                "Wallet not found for user".to_string(),
+            )
+        })?;
+
+    // Get admin/current user private key for blockchain operations
+    let db = user_repo.get_connection();
+    let admin_user_id = Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to delete wallet: {}", e),
+            format!("Invalid user_id: {}", e),
         )
     })?;
+    
+    let private_key = get_user_private_key(db, &admin_user_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get private key: {}", e),
+            )
+        })?;
 
-    // Delete user (this will cascade delete user_major relationships)
-    user_repo.delete(user_id).await.map_err(|e| {
+    // Publish blockchain message based on role
+    let rabbit_mq_conn = RABBITMQ_CONNECTION
+        .get()
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "RabbitMQ connection not initialized".to_string(),
+            )
+        })?;
+
+    match target_user.role {
+        RoleEnum::Manager => {
+            // Remove manager from blockchain
+            let message = RemoveManagerMessage {
+                private_key,
+                manager_address: wallet_address,
+                email: target_user.email.clone(),
+            };
+
+            RabbitMQService::publish_to_remove_manager(rabbit_mq_conn, message)
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to publish remove manager message: {}", e),
+                    )
+                })?;
+        }
+        RoleEnum::Student => {
+            // Get student_id from blockchain by wallet address
+            let blockchain = BlockchainService::new(&private_key)
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to initialize blockchain service: {}", e),
+                    )
+                })?;
+
+            let student_id = blockchain
+                .get_student_id_by_address(&wallet_address)
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to get student ID: {}", e),
+                    )
+                })?;
+
+            if student_id > 0 {
+                // Deactivate student on blockchain
+                let message = DeactivateStudentMessage {
+                    private_key,
+                    student_id,
+                    email: target_user.email.clone(),
+                };
+
+                RabbitMQService::publish_to_deactivate_student(rabbit_mq_conn, message)
+                    .await
+                    .map_err(|e| {
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Failed to publish deactivate student message: {}", e),
+                        )
+                    })?;
+            }
+        }
+        _ => {
+            // Admin and Teacher don't need blockchain operations for deletion
+        }
+    }
+
+    // Soft delete user (set deleted_at instead of hard delete)
+    user_repo.soft_delete(user_id).await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to delete user: {}", e),
+            format!("Failed to soft delete user: {}", e),
         )
     })?;
 
