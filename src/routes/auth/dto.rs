@@ -28,3 +28,8 @@ pub struct LoginResponse {
 pub struct RefreshTokenRequest {
     pub refresh_token: String,
 }
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LogoutResponse {
+    pub message: String,
+}

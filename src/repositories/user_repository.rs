@@ -1,9 +1,11 @@
 use crate::entities::sea_orm_active_enums::RoleEnum;
-use crate::entities::user::Entity;
 use crate::entities::{user, user_major, wallet};
 use crate::static_service::DATABASE_CONNECTION;
 use anyhow::Result;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, DeleteResult, EntityTrait, Iden, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DeleteResult, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use uuid::Uuid;
 
 pub struct UserRepository;
@@ -47,8 +49,7 @@ impl UserRepository {
         manager_only_students: bool,
     ) -> Result<(Vec<user::Model>, u64)> {
         let db = self.get_connection();
-        let mut query = user::Entity::find()
-            .filter(user::Column::DeletedAt.is_null());
+        let mut query = user::Entity::find().filter(user::Column::DeletedAt.is_null());
 
         // Manager only sees students
         if manager_only_students {
@@ -231,11 +232,11 @@ impl UserRepository {
 
         let mut active_user: user::ActiveModel = user.into();
         let now = chrono::Utc::now().naive_utc();
-        
+
         // Set deleted_at to mark as soft deleted
         active_user.deleted_at = Set(Some(now));
         active_user.update_at = Set(now);
-        
+
         let result = active_user.update(db).await?;
         Ok(result)
     }

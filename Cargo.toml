@@ -2,7 +2,7 @@
 name = "auth_service"
 version = "0.1.0"
 edition = "2024"
-default-run = "main"
+default-run = "auth_service_api"
 
 [dependencies]
 sea-orm = { version = "1.1.17", features = ["sqlx-postgres", "runtime-tokio-native-tls", "macros"] }

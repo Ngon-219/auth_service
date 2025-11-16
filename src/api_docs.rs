@@ -9,6 +9,7 @@ use utoipa::openapi::security::SecurityScheme;
     paths(
         crate::routes::health::route::health_check,
         crate::routes::auth::route::login,
+        crate::routes::auth::route::logout,
         crate::routes::profile::route::get_profile,
         crate::routes::users::route::create_user,
         crate::routes::users::route::create_users_bulk,
@@ -46,6 +47,7 @@ use utoipa::openapi::security::SecurityScheme;
         schemas(
             crate::routes::auth::dto::LoginRequest,
             crate::routes::auth::dto::LoginResponse,
+            crate::routes::auth::dto::LogoutResponse,
             crate::routes::profile::dto::ProfileResponse,
             crate::routes::users::dto::CreateUserRequest,
             crate::routes::users::dto::UpdateUserRequest,

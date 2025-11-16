@@ -2,7 +2,7 @@ use crate::config::APP_CONFIG;
 use redis::{AsyncCommands, aio::MultiplexedConnection};
 use socketioxide_emitter::{Driver, IoEmitter};
 use tokio::sync::OnceCell;
-struct RedisConnection(MultiplexedConnection);
+pub struct RedisConnection(MultiplexedConnection);
 impl Driver for RedisConnection {
     type Error = redis::RedisError;
 

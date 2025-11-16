@@ -1,5 +1,6 @@
 use crate::config::{
-    APP_CONFIG, MFA_CODE_REUSE_TTL_SECONDS, MFA_LOCK_DURATION_SECONDS, MFA_MAX_FAIL_ATTEMPTS,
+    APP_CONFIG, JWT_EXPRIED_TIME, MFA_CODE_REUSE_TTL_SECONDS, MFA_LOCK_DURATION_SECONDS,
+    MFA_MAX_FAIL_ATTEMPTS,
 };
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -140,5 +141,30 @@ impl MfaRedisService {
         let now = Utc::now().timestamp();
         let _: () = redis.set_ex(&key, now, MFA_CODE_REUSE_TTL_SECONDS).await?;
         Ok(())
+    }
+}
+
+pub struct JwtBlacklist;
+
+impl JwtBlacklist {
+    pub async fn add_jwt_to_blacklist(user_id: &str, jwt: &str) -> Result<()> {
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
+
+        let key = format!("jwt:blacklist:{}:{}", user_id, jwt);
+        let now = Utc::now().timestamp();
+        let _: () = redis.set_ex(&key, now, JWT_EXPRIED_TIME as u64).await?;
+        Ok(())
+    }
+
+    pub async fn check_jwt_in_blacklist(user_id: &str, jwt: &str) -> Result<bool> {
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
+
+        let key = format!("jwt:blacklist:{}:{}", user_id, jwt);
+        let exists: bool = redis.exists(&key).await?;
+        Ok(exists)
     }
 }

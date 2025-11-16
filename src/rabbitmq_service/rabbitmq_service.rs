@@ -5,9 +5,8 @@ use crate::rabbitmq_service::consumers::{
     REMOVE_MANAGER_CHANNEL,
 };
 use crate::rabbitmq_service::structs::{
-    ActivateStudentMessage, AssignRoleMessage, DeactivateStudentMessage,
-    RegisterNewManagerMessage, RegisterNewUserMessage, RegisterStudentsBatchMessage,
-    RemoveManagerMessage,
+    ActivateStudentMessage, AssignRoleMessage, DeactivateStudentMessage, RegisterNewManagerMessage,
+    RegisterNewUserMessage, RegisterStudentsBatchMessage, RemoveManagerMessage,
 };
 use lapin::{BasicProperties, Connection, ConnectionProperties, options::*};
 use serde_json::json;
@@ -62,7 +61,7 @@ impl RabbitMQService {
     }
 
     pub async fn create_register_new_manager_channel(
-        connection: &Connection
+        connection: &Connection,
     ) -> Result<(), anyhow::Error> {
         let channel = connection
             .create_channel()
@@ -99,11 +98,7 @@ impl RabbitMQService {
 
         for queue in queues.iter() {
             channel
-                .queue_declare(
-                    queue,
-                    QueueDeclareOptions::default(),
-                    Default::default(),
-                )
+                .queue_declare(queue, QueueDeclareOptions::default(), Default::default())
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to create RabbitMQ queue {}: {}", queue, e))?;
         }

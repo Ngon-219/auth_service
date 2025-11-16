@@ -1,15 +1,14 @@
 use crate::blockchain::BlockchainService;
 use crate::config::APP_CONFIG;
 use crate::rabbitmq_service::structs::{
-    ActivateStudentMessage, AssignRoleMessage, DeactivateStudentMessage,
-    RegisterNewManagerMessage, RegisterNewUserMessage, RegisterStudentsBatchMessage,
-    RemoveManagerMessage,
+    ActivateStudentMessage, AssignRoleMessage, DeactivateStudentMessage, RegisterNewManagerMessage,
+    RegisterNewUserMessage, RegisterStudentsBatchMessage, RemoveManagerMessage,
 };
 use crate::redis_service::redis_emitter::RedisEmitter;
 use crate::repositories::UserRepository;
 use anyhow::Context;
 use futures::StreamExt;
-use lapin::options::{BasicAckOptions, BasicConsumeOptions, QueueDeclareOptions};
+use lapin::options::{BasicAckOptions, BasicConsumeOptions};
 use lapin::types::FieldTable;
 use lapin::{Connection, ConnectionProperties};
 use serde_json::json;
@@ -46,15 +45,18 @@ impl RabbitMqConsumer {
     }
 
     pub async fn consume_register_new_student() -> Result<(), anyhow::Error> {
-        tracing::info!("Starting consumer for register new student queue: {}", REGISTER_NEW_USER_CHANNEL);
-        
+        tracing::info!(
+            "Starting consumer for register new student queue: {}",
+            REGISTER_NEW_USER_CHANNEL
+        );
+
         let rabbit_conn = RABBITMQ_CONNECTION
             .get()
             .expect("Failed to connect to rabbitMQ");
         let channel = rabbit_conn.create_channel().await.expect("created channel");
 
         tracing::info!("Created RabbitMQ channel, starting to consume messages...");
-        
+
         let mut consumer = channel
             .basic_consume(
                 REGISTER_NEW_USER_CHANNEL,
@@ -77,22 +79,24 @@ impl RabbitMqConsumer {
             };
 
             match std::str::from_utf8(&delivery.data) {
-                Ok(payload) => {
+                Ok(_payload) => {
                     let deserialize_payload: RegisterNewUserMessage =
                         serde_json::from_slice::<RegisterNewUserMessage>(&delivery.data)?;
-                    
+
                     tracing::info!(
                         "Processing register student message for student_code: {}, email: {}",
                         deserialize_payload.student_code,
                         deserialize_payload.email
                     );
-                    
+
                     let ack_options = BasicAckOptions::default();
                     if let Err(e) = delivery.ack(ack_options).await {
                         tracing::error!("Failed to acknowledge register new user message: {}", e);
                     } else {
-                        tracing::debug!("Message acknowledged, starting blockchain registration...");
-                        
+                        tracing::debug!(
+                            "Message acknowledged, starting blockchain registration..."
+                        );
+
                         let blockchain =
                             BlockchainService::new(&deserialize_payload.private_key).await?;
                         let result = blockchain
@@ -181,7 +185,10 @@ impl RabbitMqConsumer {
     }
 
     pub async fn consume_register_new_manager() -> Result<(), anyhow::Error> {
-        tracing::info!("Starting consumer for register new manager queue: {}", REGISTER_NEW_MANAGER_CHANNEL);
+        tracing::info!(
+            "Starting consumer for register new manager queue: {}",
+            REGISTER_NEW_MANAGER_CHANNEL
+        );
 
         let rabbit_conn = RABBITMQ_CONNECTION
             .get()
@@ -192,7 +199,7 @@ impl RabbitMqConsumer {
 
         let mut consumer = channel
             .basic_consume(
-                REGISTER_NEW_MANAGER_CHANNEL ,
+                REGISTER_NEW_MANAGER_CHANNEL,
                 "register_manager",
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
@@ -212,7 +219,7 @@ impl RabbitMqConsumer {
             };
 
             match std::str::from_utf8(&delivery.data) {
-                Ok(payload) => {
+                Ok(_payload) => {
                     let deserialize_payload: RegisterNewManagerMessage =
                         serde_json::from_slice::<RegisterNewManagerMessage>(&delivery.data)?;
 
@@ -223,16 +230,19 @@ impl RabbitMqConsumer {
 
                     let ack_options = BasicAckOptions::default();
                     if let Err(e) = delivery.ack(ack_options).await {
-                        tracing::error!("Failed to acknowledge register new manager message: {}", e);
+                        tracing::error!(
+                            "Failed to acknowledge register new manager message: {}",
+                            e
+                        );
                     } else {
-                        tracing::debug!("Message acknowledged, starting blockchain registration...");
+                        tracing::debug!(
+                            "Message acknowledged, starting blockchain registration..."
+                        );
 
                         let blockchain =
                             BlockchainService::new(&deserialize_payload.private_key).await?;
                         let result = blockchain
-                            .add_manager(
-                                &deserialize_payload.wallet_address,
-                            )
+                            .add_manager(&deserialize_payload.wallet_address)
                             .await;
 
                         match result {
@@ -242,13 +252,13 @@ impl RabbitMqConsumer {
                                     "email": deserialize_payload.email,
                                     "message": "Register manager on blockchain successfully."
                                 })
-                                    .to_string();
+                                .to_string();
 
                                 RedisEmitter::emit_to_rooom(
                                     &format!("user:{}", deserialize_payload.email),
                                     &notification,
                                 )
-                                    .await;
+                                .await;
 
                                 tracing::info!(
                                     "Successfully registered new manager {} on blockchain and sent notification",
@@ -262,9 +272,8 @@ impl RabbitMqConsumer {
                                     "Attempting to delete user with email: {} after blockchain registration failed",
                                     deserialize_payload.email
                                 );
-                                if let Err(delete_err) = user_repo
-                                    .delete_by_email(&deserialize_payload.email)
-                                    .await
+                                if let Err(delete_err) =
+                                    user_repo.delete_by_email(&deserialize_payload.email).await
                                 {
                                     tracing::error!(
                                         "Failed to delete user after blockchain error: {}",
@@ -289,7 +298,7 @@ impl RabbitMqConsumer {
                                     &format!("user:{}", deserialize_payload.email),
                                     &notification,
                                 )
-                                    .await;
+                                .await;
 
                                 tracing::info!(
                                     "Sent failure notification for new manager {} after blockchain registration failed",
@@ -310,12 +319,15 @@ impl RabbitMqConsumer {
     }
 
     pub async fn consume_assign_role() -> Result<(), anyhow::Error> {
-        tracing::info!("Starting consumer for assign role queue: {}", ASSIGN_ROLE_CHANNEL);
-        
+        tracing::info!(
+            "Starting consumer for assign role queue: {}",
+            ASSIGN_ROLE_CHANNEL
+        );
+
         let rabbit_conn = RABBITMQ_CONNECTION
             .get()
             .ok_or_else(|| anyhow::anyhow!("RabbitMQ connection not initialized"))?;
-        
+
         let channel = rabbit_conn
             .create_channel()
             .await
@@ -354,8 +366,7 @@ impl RabbitMqConsumer {
                     if let Err(e) = delivery.ack(ack_options).await {
                         tracing::error!("Failed to acknowledge assign role message: {}", e);
                     } else {
-                        let blockchain =
-                            BlockchainService::new(&payload.private_key).await?;
+                        let blockchain = BlockchainService::new(&payload.private_key).await?;
                         let result = blockchain
                             .assign_role(&payload.user_address, payload.role)
                             .await;
@@ -411,12 +422,15 @@ impl RabbitMqConsumer {
     }
 
     pub async fn consume_remove_manager() -> Result<(), anyhow::Error> {
-        tracing::info!("Starting consumer for remove manager queue: {}", REMOVE_MANAGER_CHANNEL);
-        
+        tracing::info!(
+            "Starting consumer for remove manager queue: {}",
+            REMOVE_MANAGER_CHANNEL
+        );
+
         let rabbit_conn = RABBITMQ_CONNECTION
             .get()
             .ok_or_else(|| anyhow::anyhow!("RabbitMQ connection not initialized"))?;
-        
+
         let channel = rabbit_conn
             .create_channel()
             .await
@@ -454,11 +468,8 @@ impl RabbitMqConsumer {
                     if let Err(e) = delivery.ack(ack_options).await {
                         tracing::error!("Failed to acknowledge remove manager message: {}", e);
                     } else {
-                        let blockchain =
-                            BlockchainService::new(&payload.private_key).await?;
-                        let result = blockchain
-                            .remove_manager(&payload.manager_address)
-                            .await;
+                        let blockchain = BlockchainService::new(&payload.private_key).await?;
+                        let result = blockchain.remove_manager(&payload.manager_address).await;
 
                         match result {
                             Ok(_) => {
@@ -510,12 +521,15 @@ impl RabbitMqConsumer {
     }
 
     pub async fn consume_deactivate_student() -> Result<(), anyhow::Error> {
-        tracing::info!("Starting consumer for deactivate student queue: {}", DEACTIVATE_STUDENT_CHANNEL);
-        
+        tracing::info!(
+            "Starting consumer for deactivate student queue: {}",
+            DEACTIVATE_STUDENT_CHANNEL
+        );
+
         let rabbit_conn = RABBITMQ_CONNECTION
             .get()
             .ok_or_else(|| anyhow::anyhow!("RabbitMQ connection not initialized"))?;
-        
+
         let channel = rabbit_conn
             .create_channel()
             .await
@@ -553,11 +567,8 @@ impl RabbitMqConsumer {
                     if let Err(e) = delivery.ack(ack_options).await {
                         tracing::error!("Failed to acknowledge deactivate student message: {}", e);
                     } else {
-                        let blockchain =
-                            BlockchainService::new(&payload.private_key).await?;
-                        let result = blockchain
-                            .deactivate_student(payload.student_id)
-                            .await;
+                        let blockchain = BlockchainService::new(&payload.private_key).await?;
+                        let result = blockchain.deactivate_student(payload.student_id).await;
 
                         match result {
                             Ok(_) => {
@@ -609,12 +620,15 @@ impl RabbitMqConsumer {
     }
 
     pub async fn consume_activate_student() -> Result<(), anyhow::Error> {
-        tracing::info!("Starting consumer for activate student queue: {}", ACTIVATE_STUDENT_CHANNEL);
-        
+        tracing::info!(
+            "Starting consumer for activate student queue: {}",
+            ACTIVATE_STUDENT_CHANNEL
+        );
+
         let rabbit_conn = RABBITMQ_CONNECTION
             .get()
             .ok_or_else(|| anyhow::anyhow!("RabbitMQ connection not initialized"))?;
-        
+
         let channel = rabbit_conn
             .create_channel()
             .await
@@ -652,11 +666,8 @@ impl RabbitMqConsumer {
                     if let Err(e) = delivery.ack(ack_options).await {
                         tracing::error!("Failed to acknowledge activate student message: {}", e);
                     } else {
-                        let blockchain =
-                            BlockchainService::new(&payload.private_key).await?;
-                        let result = blockchain
-                            .activate_student(payload.student_id)
-                            .await;
+                        let blockchain = BlockchainService::new(&payload.private_key).await?;
+                        let result = blockchain.activate_student(payload.student_id).await;
 
                         match result {
                             Ok(_) => {
@@ -708,12 +719,15 @@ impl RabbitMqConsumer {
     }
 
     pub async fn consume_register_students_batch() -> Result<(), anyhow::Error> {
-        tracing::info!("Starting consumer for register students batch queue: {}", REGISTER_STUDENTS_BATCH_CHANNEL);
-        
+        tracing::info!(
+            "Starting consumer for register students batch queue: {}",
+            REGISTER_STUDENTS_BATCH_CHANNEL
+        );
+
         let rabbit_conn = RABBITMQ_CONNECTION
             .get()
             .ok_or_else(|| anyhow::anyhow!("RabbitMQ connection not initialized"))?;
-        
+
         let channel = rabbit_conn
             .create_channel()
             .await
@@ -749,10 +763,12 @@ impl RabbitMqConsumer {
 
                     let ack_options = BasicAckOptions::default();
                     if let Err(e) = delivery.ack(ack_options).await {
-                        tracing::error!("Failed to acknowledge register students batch message: {}", e);
+                        tracing::error!(
+                            "Failed to acknowledge register students batch message: {}",
+                            e
+                        );
                     } else {
-                        let blockchain =
-                            BlockchainService::new(&payload.private_key).await?;
+                        let blockchain = BlockchainService::new(&payload.private_key).await?;
                         let result = blockchain
                             .register_students_batch(
                                 payload.wallet_addresses.clone(),
@@ -808,7 +824,10 @@ impl RabbitMqConsumer {
                     }
                 }
                 Err(e) => {
-                    tracing::error!("Failed to deserialize register students batch message: {}", e);
+                    tracing::error!(
+                        "Failed to deserialize register students batch message: {}",
+                        e
+                    );
                     delivery.ack(BasicAckOptions::default()).await?;
                 }
             }

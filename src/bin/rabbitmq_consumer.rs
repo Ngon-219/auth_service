@@ -1,4 +1,3 @@
-use auth_service::rabbitmq_service::consumers;
 use auth_service::rabbitmq_service::consumers::{
     RABBITMQ_CONNECTION, RabbitMqConsumer, get_rabbitmq_connetion,
 };
@@ -9,12 +8,10 @@ use auth_service::utils::tracing::init_standard_tracing;
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
     dotenv::dotenv().ok();
-    
+
     init_standard_tracing(env!("CARGO_CRATE_NAME"));
     tracing::info!("Initializing RabbitMQ connection...");
 
-
-    
     get_rabbitmq_connetion().await;
     tracing::info!("RabbitMQ connection established");
 
@@ -24,7 +21,7 @@ pub async fn main() -> anyhow::Result<()> {
     let rabbitmq_connection = RABBITMQ_CONNECTION
         .get()
         .expect("Failed to get rabbitmq connection");
-    
+
     tracing::info!("Creating register new user channel...");
     RabbitMQService::create_register_new_user_channel(rabbitmq_connection)
         .await
@@ -43,7 +40,7 @@ pub async fn main() -> anyhow::Result<()> {
     tracing::info!("All queues created successfully");
 
     tracing::info!("Starting all consumers...");
-    
+
     // Start all consumers in parallel
     let student_consumer = tokio::spawn(async {
         tracing::info!("[Spawn] Starting student consumer task...");
@@ -96,9 +93,9 @@ pub async fn main() -> anyhow::Result<()> {
 
     // Give consumers a moment to start
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    
+
     tracing::info!("All consumers started, waiting for messages...");
-    
+
     // Wait for any consumer to stop (they run indefinitely)
     tokio::select! {
         _ = student_consumer => {

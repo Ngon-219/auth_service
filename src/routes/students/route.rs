@@ -234,7 +234,7 @@ pub async fn deactivate_student(
             format!("Invalid user_id: {}", e),
         )
     })?;
-    
+
     // Get user email and private key
     let db = user_repo.get_connection();
     let user = user_repo
@@ -246,31 +246,22 @@ pub async fn deactivate_student(
                 format!("Failed to find user: {}", e),
             )
         })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                "User not found".to_string(),
-            )
-        })?;
-    
-    let private_key = get_user_private_key(db, &user_id)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get private key: {}", e),
-            )
-        })?;
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "User not found".to_string()))?;
+
+    let private_key = get_user_private_key(db, &user_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get private key: {}", e),
+        )
+    })?;
 
     // Publish message to RabbitMQ
-    let rabbitmq_conn = RABBITMQ_CONNECTION
-        .get()
-        .ok_or_else(|| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "RabbitMQ connection not initialized".to_string(),
-            )
-        })?;
+    let rabbitmq_conn = RABBITMQ_CONNECTION.get().ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "RabbitMQ connection not initialized".to_string(),
+        )
+    })?;
 
     let message = DeactivateStudentMessage {
         private_key,
@@ -330,7 +321,7 @@ pub async fn activate_student(
             format!("Invalid user_id: {}", e),
         )
     })?;
-    
+
     // Get user email and private key
     let db = user_repo.get_connection();
     let user = user_repo
@@ -342,31 +333,22 @@ pub async fn activate_student(
                 format!("Failed to find user: {}", e),
             )
         })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                "User not found".to_string(),
-            )
-        })?;
-    
-    let private_key = get_user_private_key(db, &user_id)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get private key: {}", e),
-            )
-        })?;
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "User not found".to_string()))?;
+
+    let private_key = get_user_private_key(db, &user_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get private key: {}", e),
+        )
+    })?;
 
     // Publish message to RabbitMQ
-    let rabbitmq_conn = RABBITMQ_CONNECTION
-        .get()
-        .ok_or_else(|| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "RabbitMQ connection not initialized".to_string(),
-            )
-        })?;
+    let rabbitmq_conn = RABBITMQ_CONNECTION.get().ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "RabbitMQ connection not initialized".to_string(),
+        )
+    })?;
 
     let message = ActivateStudentMessage {
         private_key,

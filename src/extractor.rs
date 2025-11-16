@@ -48,6 +48,18 @@ where
             .decode_jwt(bearer.token())
             .map_err(|_| AppErrors::unauthorized("Invalid jwt token"))?;
 
+        let check_jwt_blacklist =
+            crate::redis_service::redis_service::JwtBlacklist::check_jwt_in_blacklist(
+                &token_data.user_id,
+                bearer.token(),
+            )
+            .await
+            .expect("check jwt blacklist");
+
+        if check_jwt_blacklist {
+            return Err(AppErrors::unauthorized("Invalid jwt token"));
+        }
+
         let db = DATABASE_CONNECTION
             .get()
             .expect("DATABASE_CONNECTION not set");

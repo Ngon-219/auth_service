@@ -24,8 +24,8 @@ use crate::middleware::permission;
 use crate::rabbitmq_service::consumers::RABBITMQ_CONNECTION;
 use crate::rabbitmq_service::rabbitmq_service::RabbitMQService;
 use crate::rabbitmq_service::structs::{
-    AssignRoleMessage, DeactivateStudentMessage, RegisterNewManagerMessage,
-    RegisterNewUserMessage, RegisterStudentsBatchMessage, RemoveManagerMessage,
+    AssignRoleMessage, DeactivateStudentMessage, RegisterNewManagerMessage, RegisterNewUserMessage,
+    RegisterStudentsBatchMessage, RemoveManagerMessage,
 };
 use crate::repositories::{UserRepository, WalletRepository, user_repository::UserUpdate};
 use crate::utils::encryption::encrypt_private_key;
@@ -170,7 +170,7 @@ pub async fn create_user(
             };
             RabbitMQService::publish_to_register_new_user(rabbit_mq_conn, register_user_msg)
                 .await
-                .map_err(|e| tracing::error!("Failed to publish to register new user"))
+                .map_err(|e| tracing::error!("Failed to publish to register new user: {e}"))
                 .ok();
         }
         RoleEnum::Manager => {
@@ -186,7 +186,7 @@ pub async fn create_user(
 
             RabbitMQService::publish_to_register_new_manager(rabbit_mq_conn, register_new_manager)
                 .await
-                .map_err(|e| tracing::error!("Failed to publish to register new manager"))
+                .map_err(|e| tracing::error!("Failed to publish to register new manager: {e}"))
                 .ok();
         }
         RoleEnum::Teacher | RoleEnum::Admin => {
@@ -197,14 +197,12 @@ pub async fn create_user(
                 _ => 0,
             };
 
-            let rabbit_mq_conn = RABBITMQ_CONNECTION
-                .get()
-                .ok_or_else(|| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "RabbitMQ connection not initialized".to_string(),
-                    )
-                })?;
+            let rabbit_mq_conn = RABBITMQ_CONNECTION.get().ok_or_else(|| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "RabbitMQ connection not initialized".to_string(),
+                )
+            })?;
 
             let assign_role_msg = AssignRoleMessage {
                 private_key: user_private_key,
@@ -517,14 +515,12 @@ pub async fn create_users_bulk(
 
     // Batch register students on blockchain (max 50 at a time)
     if !student_addresses.is_empty() {
-        let rabbit_mq_conn = RABBITMQ_CONNECTION
-            .get()
-            .ok_or_else(|| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "RabbitMQ connection not initialized".to_string(),
-                )
-            })?;
+        let rabbit_mq_conn = RABBITMQ_CONNECTION.get().ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "RabbitMQ connection not initialized".to_string(),
+            )
+        })?;
 
         // Get admin private key for batch registration
         let admin_private_key = APP_CONFIG.admin_private_key.clone();
@@ -541,11 +537,9 @@ pub async fn create_users_bulk(
                 emails: student_emails[start..end].to_vec(),
             };
 
-            if let Err(e) = RabbitMQService::publish_to_register_students_batch(
-                rabbit_mq_conn,
-                batch_message,
-            )
-            .await
+            if let Err(e) =
+                RabbitMQService::publish_to_register_students_batch(rabbit_mq_conn, batch_message)
+                    .await
             {
                 tracing::error!("Failed to publish batch register message: {}", e);
                 // Don't fail the entire operation, just log the error
@@ -940,24 +934,19 @@ pub async fn delete_user(
     permission::can_modify_user(&auth_claims, &target_role)?;
 
     // Get wallet address for blockchain operations
-    let wallet_info = wallet_repo
-        .find_by_user_id(user_id)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get wallet: {}", e),
-            )
-        })?;
+    let wallet_info = wallet_repo.find_by_user_id(user_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get wallet: {}", e),
+        )
+    })?;
 
-    let wallet_address = wallet_info
-        .map(|w| w.address)
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                "Wallet not found for user".to_string(),
-            )
-        })?;
+    let wallet_address = wallet_info.map(|w| w.address).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            "Wallet not found for user".to_string(),
+        )
+    })?;
 
     // Get admin/current user private key for blockchain operations
     let db = user_repo.get_connection();
@@ -967,7 +956,7 @@ pub async fn delete_user(
             format!("Invalid user_id: {}", e),
         )
     })?;
-    
+
     let private_key = get_user_private_key(db, &admin_user_id)
         .await
         .map_err(|e| {
@@ -978,14 +967,12 @@ pub async fn delete_user(
         })?;
 
     // Publish blockchain message based on role
-    let rabbit_mq_conn = RABBITMQ_CONNECTION
-        .get()
-        .ok_or_else(|| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "RabbitMQ connection not initialized".to_string(),
-            )
-        })?;
+    let rabbit_mq_conn = RABBITMQ_CONNECTION.get().ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "RabbitMQ connection not initialized".to_string(),
+        )
+    })?;
 
     match target_user.role {
         RoleEnum::Manager => {
@@ -1007,14 +994,12 @@ pub async fn delete_user(
         }
         RoleEnum::Student => {
             // Get student_id from blockchain by wallet address
-            let blockchain = BlockchainService::new(&private_key)
-                .await
-                .map_err(|e| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to initialize blockchain service: {}", e),
-                    )
-                })?;
+            let blockchain = BlockchainService::new(&private_key).await.map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to initialize blockchain service: {}", e),
+                )
+            })?;
 
             let student_id = blockchain
                 .get_student_id_by_address(&wallet_address)

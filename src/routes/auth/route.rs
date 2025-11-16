@@ -1,13 +1,20 @@
 use axum::{Json, Router, http::StatusCode, routing::post};
+use axum_extra::TypedHeader;
+use axum_extra::headers::{Authorization, authorization::Bearer};
 
-use super::dto::{LoginRequest, LoginResponse};
+use super::dto::{LoginRequest, LoginResponse, LogoutResponse};
+use crate::config::JWT_EXPRIED_TIME;
 use crate::entities::sea_orm_active_enums::RoleEnum;
+use crate::extractor::AuthClaims;
+use crate::redis_service::redis_service::JwtBlacklist;
 use crate::repositories::{UserMfaRepository, UserRepository};
 use do_an_lib::jwt::JwtManager;
 use do_an_lib::structs::token_claims::UserRole;
 
 pub fn create_route() -> Router {
-    Router::new().route("/api/v1/auth/login", post(login))
+    Router::new()
+        .route("/api/v1/auth/login", post(login))
+        .route("/api/v1/auth/logout", post(logout))
 }
 
 /// Login endpoint - returns JWT token
@@ -139,15 +146,12 @@ pub async fn login(
     let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "secret_key".to_string());
     let jwt_manager = JwtManager::new(jwt_secret);
 
-    // Create token with 24 hours expiration
-    let expires_in = 86400i64; // 24 hours in seconds
-
     let token = jwt_manager
         .create_jwt(
             &user_info.user_id.to_string(),
             &format!("{} {}", user_info.first_name, user_info.last_name),
             user_role,
-            expires_in,
+            JWT_EXPRIED_TIME,
         )
         .map_err(|e| {
             (
@@ -166,10 +170,46 @@ pub async fn login(
     let response = LoginResponse {
         access_token: token,
         token_type: "Bearer".to_string(),
-        expires_in,
+        expires_in: JWT_EXPRIED_TIME,
         user_id: user_info.user_id.to_string(),
         email: user_info.email,
         role: role_str.to_string(),
+    };
+
+    Ok((StatusCode::OK, Json(response)))
+}
+
+/// Logout endpoint - blacklist JWT token
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/logout",
+    responses(
+        (status = 200, description = "Logout successful", body = LogoutResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Authentication"
+)]
+pub async fn logout(
+    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    AuthClaims(auth_claims): AuthClaims,
+) -> Result<(StatusCode, Json<LogoutResponse>), (StatusCode, String)> {
+    let token = bearer.token();
+    let user_id = auth_claims.user_id.clone();
+
+    // Add JWT to blacklist
+    JwtBlacklist::add_jwt_to_blacklist(&user_id, token)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to blacklist token: {}", e),
+            )
+        })?;
+
+    let response = LogoutResponse {
+        message: "Logout successful".to_string(),
     };
 
     Ok((StatusCode::OK, Json(response)))
