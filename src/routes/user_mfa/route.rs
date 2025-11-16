@@ -108,7 +108,7 @@ pub async fn req_enable_mfa(
 
     let rabbit_mq_connection = RabbitMQService::new().await;
     RabbitMQService::publish_to_mail_queue(
-        rabbit_mq_connection,
+        &rabbit_mq_connection,
         &user_info.email,
         "Enable MFA - Verification Code",
         &email_body,

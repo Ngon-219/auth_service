@@ -301,6 +301,7 @@ impl UserRepository {
     }
 }
 
+#[derive(Default)]
 pub struct UserUpdate {
     pub first_name: Option<String>,
     pub last_name: Option<String>,

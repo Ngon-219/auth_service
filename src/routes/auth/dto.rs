@@ -33,3 +33,33 @@ pub struct RefreshTokenRequest {
 pub struct LogoutResponse {
     pub message: String,
 }
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ForgotPasswordRequest {
+    #[schema(example = "user@example.com")]
+    pub email: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ForgotPasswordResponse {
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetPasswordRequest {
+    #[schema(example = "user@example.com")]
+    pub email: String,
+    
+    #[schema(example = "12345678")]
+    pub otp_code: String,
+    
+    #[schema(example = "newPassword123")]
+    pub new_password: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ResetPasswordResponse {
+    pub message: String,
+}

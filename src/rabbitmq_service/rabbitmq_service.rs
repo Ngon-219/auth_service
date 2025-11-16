@@ -107,7 +107,7 @@ impl RabbitMQService {
     }
 
     pub async fn publish_to_mail_queue(
-        connection: Connection,
+        connection: &Connection,
         to: &str,
         subject: &str,
         email_data: &str,

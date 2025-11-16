@@ -2,12 +2,19 @@ use axum::{Json, Router, http::StatusCode, routing::post};
 use axum_extra::TypedHeader;
 use axum_extra::headers::{Authorization, authorization::Bearer};
 
-use super::dto::{LoginRequest, LoginResponse, LogoutResponse};
+use super::dto::{
+    ForgotPasswordRequest, ForgotPasswordResponse, LoginRequest, LoginResponse, LogoutResponse,
+    ResetPasswordRequest, ResetPasswordResponse,
+};
 use crate::config::JWT_EXPRIED_TIME;
 use crate::entities::sea_orm_active_enums::RoleEnum;
 use crate::extractor::AuthClaims;
+use crate::rabbitmq_service::consumers::get_rabbitmq_connetion;
+use crate::rabbitmq_service::rabbitmq_service::RabbitMQService;
 use crate::redis_service::redis_service::JwtBlacklist;
-use crate::repositories::{UserMfaRepository, UserRepository};
+use crate::repositories::{OtpVerifyRepository, UserMfaRepository, UserRepository};
+use crate::utils::gen_otp_code::gen_code;
+use chrono::Utc;
 use do_an_lib::jwt::JwtManager;
 use do_an_lib::structs::token_claims::UserRole;
 
@@ -15,6 +22,8 @@ pub fn create_route() -> Router {
     Router::new()
         .route("/api/v1/auth/login", post(login))
         .route("/api/v1/auth/logout", post(logout))
+        .route("/api/v1/auth/forgot-password", post(forgot_password))
+        .route("/api/v1/auth/reset-password", post(reset_password))
 }
 
 /// Login endpoint - returns JWT token
@@ -210,6 +219,216 @@ pub async fn logout(
 
     let response = LogoutResponse {
         message: "Logout successful".to_string(),
+    };
+
+    Ok((StatusCode::OK, Json(response)))
+}
+
+/// Forgot password endpoint - sends OTP to email via RabbitMQ
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/forgot-password",
+    request_body = ForgotPasswordRequest,
+    responses(
+        (status = 200, description = "OTP sent successfully", body = ForgotPasswordResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Authentication"
+)]
+pub async fn forgot_password(
+    Json(payload): Json<ForgotPasswordRequest>,
+) -> Result<(StatusCode, Json<ForgotPasswordResponse>), (StatusCode, String)> {
+    let user_repo = UserRepository::new();
+
+    // Find user by email
+    let user_info = user_repo
+        .find_by_email(&payload.email)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database error: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                "User not found with this email".to_string(),
+            )
+        })?;
+
+    // Generate OTP code
+    let (otp_code, expires_at) = gen_code().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to generate OTP: {}", e),
+        )
+    })?;
+
+    // Create OTP record in database
+    let otp_repo = OtpVerifyRepository::new();
+    let _otp_record = otp_repo
+        .create(
+            user_info.user_id,
+            otp_code.clone(),
+            payload.email.clone(),
+            "reset_password".to_string(),
+            expires_at.naive_utc(),
+        )
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to create OTP record: {}", e),
+            )
+        })?;
+
+    // Send OTP via RabbitMQ to email service
+    let rabbitmq_conn = get_rabbitmq_connetion().await;
+    let email_subject = "Reset Password OTP";
+    let email_body = format!(
+        "Your OTP code for password reset is: {}. This code will expire in 10 minutes.",
+        otp_code
+    );
+
+    RabbitMQService::publish_to_mail_queue(
+        rabbitmq_conn,
+        &payload.email,
+        email_subject,
+        &email_body,
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to send email: {}", e),
+        )
+    })?;
+
+    let response = ForgotPasswordResponse {
+        message: "OTP code has been sent to your email".to_string(),
+    };
+
+    Ok((StatusCode::OK, Json(response)))
+}
+
+/// Reset password endpoint - verifies OTP and sets new password
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/reset-password",
+    request_body = ResetPasswordRequest,
+    responses(
+        (status = 200, description = "Password reset successfully", body = ResetPasswordResponse),
+        (status = 400, description = "Invalid or expired OTP"),
+        (status = 404, description = "User or OTP not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Authentication"
+)]
+pub async fn reset_password(
+    Json(payload): Json<ResetPasswordRequest>,
+) -> Result<(StatusCode, Json<ResetPasswordResponse>), (StatusCode, String)> {
+    let user_repo = UserRepository::new();
+
+    // Find user by email
+    let user_info = user_repo
+        .find_by_email(&payload.email)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database error: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                "User not found with this email".to_string(),
+            )
+        })?;
+
+    // Find latest OTP for reset password
+    let otp_repo = OtpVerifyRepository::new();
+    let otp_record = otp_repo
+        .find_latest_by_user_and_purpose(user_info.user_id, "reset_password")
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database error: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                "OTP not found. Please request a new OTP".to_string(),
+            )
+        })?;
+
+    // Check if OTP is already verified (already used)
+    if otp_record.is_verified {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "OTP has already been used".to_string(),
+        ));
+    }
+
+    // Check if OTP is expired
+    let now = Utc::now().naive_utc();
+    if otp_record.expires_at < now {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "OTP has expired. Please request a new OTP".to_string(),
+        ));
+    }
+
+    // Verify OTP code
+    if otp_record.otp_code != payload.otp_code {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Invalid OTP code".to_string(),
+        ));
+    }
+
+    // Mark OTP as verified
+    otp_repo
+        .mark_as_verified(otp_record.otp_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to verify OTP: {}", e),
+            )
+        })?;
+
+    // Hash new password
+    let hashed_password = bcrypt::hash(&payload.new_password, bcrypt::DEFAULT_COST).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to hash password: {}", e),
+        )
+    })?;
+
+    // Update user password
+    use crate::repositories::user_repository::UserUpdate;
+    let update = UserUpdate {
+        password: Some(hashed_password),
+        ..Default::default()
+    };
+
+    user_repo
+        .update(user_info.user_id, update)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to update password: {}", e),
+            )
+        })?;
+
+    let response = ResetPasswordResponse {
+        message: "Password has been reset successfully".to_string(),
     };
 
     Ok((StatusCode::OK, Json(response)))
