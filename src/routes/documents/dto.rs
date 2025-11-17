@@ -14,7 +14,18 @@ pub struct DocumentDataResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UserInfo {
+    pub user_id: String,
+    pub first_name: String,
+    pub last_name: String,
+    pub email: String,
+    pub student_code: Option<String>,
+    pub role: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DocumentData {
+    pub user: Option<UserInfo>,
     pub scoreboard: Option<Vec<ScoreBoardItem>>,
     pub semester_summaries: Option<Vec<SemesterSummaryItem>>,
     pub certificates: Option<Vec<CertificateItem>>,

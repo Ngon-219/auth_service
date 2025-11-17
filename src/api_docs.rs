@@ -98,6 +98,7 @@ use utoipa::openapi::security::SecurityScheme;
             crate::routes::documents::dto::DocumentDataRequest,
             crate::routes::documents::dto::DocumentDataResponse,
             crate::routes::documents::dto::DocumentData,
+            crate::routes::documents::dto::UserInfo,
             crate::routes::documents::dto::ScoreBoardItem,
             crate::routes::documents::dto::SemesterSummaryItem,
             crate::routes::documents::dto::CertificateItem,

@@ -6,11 +6,13 @@ use axum::{
 use chrono::NaiveDate;
 use crate::extractor::AuthClaims;
 use crate::repositories::{ScoreRepository, UserRepository};
+use crate::entities::sea_orm_active_enums::RoleEnum;
 use super::dto::{
     DocumentDataRequest, DocumentDataResponse, DocumentData,
     ScoreBoardItem, SemesterSummaryItem, CertificateItem,
     MockCertificateRequest, MockCertificateResponse,
     MockTranscriptRequest, MockTranscriptResponse,
+    UserInfo,
 };
 
 pub fn create_route() -> Router {
@@ -42,6 +44,35 @@ pub async fn get_document_data(
             format!("Invalid user_id: {}", e),
         )
     })?;
+
+    // Get user information
+    let user_repo = UserRepository::new();
+    let user = user_repo.find_by_id(user_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get user: {}", e),
+        )
+    })?
+    .ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            "User not found".to_string(),
+        )
+    })?;
+
+    let user_info = UserInfo {
+        user_id: user.user_id.to_string(),
+        first_name: user.first_name,
+        last_name: user.last_name,
+        email: user.email,
+        student_code: user.student_code,
+        role: match user.role {
+            RoleEnum::Admin => "admin".to_string(),
+            RoleEnum::Manager => "manager".to_string(),
+            RoleEnum::Teacher => "teacher".to_string(),
+            RoleEnum::Student => "student".to_string(),
+        },
+    };
 
     let score_repo = ScoreRepository::new();
     let document_type_name = payload.document_type_name.trim();
@@ -162,7 +193,12 @@ pub async fn get_document_data(
             Json(DocumentDataResponse {
                 has_data: false,
                 message: format!("Không có dữ liệu cho loại tài liệu: {}", payload.document_type_name),
-                data: None,
+                data: Some(DocumentData {
+                    user: Some(user_info),
+                    scoreboard: None,
+                    semester_summaries: None,
+                    certificates: None,
+                }),
             }),
         ));
     }
@@ -173,6 +209,7 @@ pub async fn get_document_data(
             has_data: true,
             message: "Dữ liệu đã được lấy thành công".to_string(),
             data: Some(DocumentData {
+                user: Some(user_info),
                 scoreboard: scoreboard_data,
                 semester_summaries: semester_summaries_data,
                 certificates: certificates_data,
