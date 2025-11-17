@@ -5,6 +5,7 @@ pub mod health;
 pub mod majors;
 pub mod managers;
 pub mod profile;
+pub mod requests;
 pub mod students;
 pub mod upload;
 pub mod user_mfa;

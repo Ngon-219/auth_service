@@ -8,6 +8,7 @@ pub mod document_type;
 pub mod documents;
 pub mod major;
 pub mod otp_verify;
+pub mod request;
 pub mod score_board;
 pub mod sea_orm_active_enums;
 pub mod semester_summary;

@@ -18,3 +18,16 @@ pub enum RoleEnum {
     #[sea_orm(string_value = "student")]
     Student,
 }
+
+#[derive(
+    Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, ToSchema,
+)]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "request_status")]
+pub enum RequestStatusEnum {
+    #[sea_orm(string_value = "pending")]
+    Pending,
+    #[sea_orm(string_value = "scheduled")]
+    Scheduled,
+    #[sea_orm(string_value = "rejected")]
+    Rejected,
+}

@@ -47,6 +47,10 @@ use utoipa::openapi::security::SecurityScheme;
         crate::routes::documents::route::get_document_data,
         crate::routes::documents::route::mock_certificate,
         crate::routes::documents::route::mock_transcript,
+        crate::routes::requests::route::create_request,
+        crate::routes::requests::route::get_my_requests,
+        crate::routes::requests::route::schedule_request,
+        crate::routes::requests::route::get_all_requests,
     ),
     components(
         schemas(
@@ -104,7 +108,14 @@ use utoipa::openapi::security::SecurityScheme;
             crate::routes::documents::dto::MockCertificateResponse,
             crate::routes::documents::dto::MockTranscriptRequest,
             crate::routes::documents::dto::MockTranscriptResponse,
+            crate::routes::requests::dto::CreateRequestRequest,
+            crate::routes::requests::dto::RequestResponse,
+            crate::routes::requests::dto::ScheduleRequestRequest,
+            crate::routes::requests::dto::ScheduleRequestResponse,
+            crate::routes::requests::dto::RequestListResponse,
+            crate::routes::requests::dto::RequestQueryParams,
             crate::entities::sea_orm_active_enums::RoleEnum,
+            crate::entities::sea_orm_active_enums::RequestStatusEnum,
         ),
     ),
     modifiers(&SecurityModifier),
@@ -120,6 +131,7 @@ use utoipa::openapi::security::SecurityScheme;
         (name = "Upload", description = "File upload endpoints"),
         (name = "security-settings", description = "Security settings and MFA endpoints"),
         (name = "Documents", description = "Document data endpoints"),
+        (name = "Requests", description = "Request management endpoints"),
         (name = "health", description = "Health check endpoints")
     ),
 )]
