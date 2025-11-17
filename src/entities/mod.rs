@@ -2,12 +2,15 @@
 
 pub mod prelude;
 
+pub mod certificate;
 pub mod department;
 pub mod document_type;
 pub mod documents;
 pub mod major;
 pub mod otp_verify;
+pub mod score_board;
 pub mod sea_orm_active_enums;
+pub mod semester_summary;
 pub mod user;
 pub mod user_major;
 pub mod user_mfa;

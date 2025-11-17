@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod departments;
+pub mod documents;
 pub mod health;
 pub mod majors;
 pub mod managers;

@@ -44,6 +44,9 @@ use utoipa::openapi::security::SecurityScheme;
         crate::routes::user_mfa::route::req_enable_mfa,
         crate::routes::user_mfa::route::enable_mfa,
         crate::routes::user_mfa::route::verify_mfa_code_test,
+        crate::routes::documents::route::get_document_data,
+        crate::routes::documents::route::mock_certificate,
+        crate::routes::documents::route::mock_transcript,
     ),
     components(
         schemas(
@@ -88,6 +91,19 @@ use utoipa::openapi::security::SecurityScheme;
             crate::routes::user_mfa::dto::VerifyMfaCodeTestRequestDto,
             crate::routes::user_mfa::dto::VerifyMfaCodeTestResponseDto,
             crate::routes::upload::route::UploadChunkResponse,
+            crate::routes::documents::dto::DocumentDataRequest,
+            crate::routes::documents::dto::DocumentDataResponse,
+            crate::routes::documents::dto::DocumentData,
+            crate::routes::documents::dto::ScoreBoardItem,
+            crate::routes::documents::dto::SemesterSummaryItem,
+            crate::routes::documents::dto::CertificateItem,
+            crate::routes::documents::dto::MockDataRequest,
+            crate::routes::documents::dto::MockDataResponse,
+            crate::routes::documents::dto::MockDataCreated,
+            crate::routes::documents::dto::MockCertificateRequest,
+            crate::routes::documents::dto::MockCertificateResponse,
+            crate::routes::documents::dto::MockTranscriptRequest,
+            crate::routes::documents::dto::MockTranscriptResponse,
             crate::entities::sea_orm_active_enums::RoleEnum,
         ),
     ),
@@ -103,6 +119,7 @@ use utoipa::openapi::security::SecurityScheme;
         (name = "System", description = "System information endpoints"),
         (name = "Upload", description = "File upload endpoints"),
         (name = "security-settings", description = "Security settings and MFA endpoints"),
+        (name = "Documents", description = "Document data endpoints"),
         (name = "health", description = "Health check endpoints")
     ),
 )]
