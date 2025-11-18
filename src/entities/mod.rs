@@ -6,6 +6,7 @@ pub mod certificate;
 pub mod department;
 pub mod document_type;
 pub mod documents;
+pub mod file_upload_history;
 pub mod major;
 pub mod otp_verify;
 pub mod request;

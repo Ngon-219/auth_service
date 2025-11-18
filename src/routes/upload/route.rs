@@ -1,6 +1,6 @@
 use axum::{Router, extract::Multipart, response::IntoResponse, routing::post};
 use utoipa::ToSchema;
-
+use crate::extractor::AuthClaims;
 use crate::utils::upload::upload_chunk;
 
 pub fn create_route() -> Router {
@@ -33,6 +33,15 @@ pub struct UploadChunkResponse {
     ),
     tag = "Upload"
 )]
-pub async fn upload_file_chunk(multipart: Multipart) -> impl IntoResponse {
-    upload_chunk(multipart).await
+pub async fn upload_file_chunk(AuthClaims(claims): AuthClaims, multipart: Multipart) -> impl IntoResponse {
+    upload_chunk(multipart, &claims.user_id).await
 }
+
+
+// fn is_csv_extension(filename: &str) -> bool {
+//     std::path::Path::new(filename)
+//         .extension()
+//         .and_then(|ext| ext.to_str())
+//         .map(|ext| ext.eq_ignore_ascii_case("csv"))
+//         .unwrap_or(false)
+// }

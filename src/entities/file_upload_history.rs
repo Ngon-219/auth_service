@@ -1,48 +1,39 @@
-//! `SeaORM` Entity for certificate table
+//! `SeaORM` Entity for file_upload_history table
 
-use sea_orm::entity::prelude::*;
+use sea_orm::{entity::prelude::*, sea_query::StringLen};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 #[derive(Copy, Clone, Default, Debug, DeriveEntity)]
 pub struct Entity;
 
 impl EntityName for Entity {
     fn table_name(&self) -> &str {
-        "certificate"
+        "file_upload_history"
     }
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveModel, DeriveActiveModel, Eq, Serialize, Deserialize)]
 pub struct Model {
     #[serde(skip_deserializing)]
-    pub certificate_id: Uuid,
+    pub file_upload_history_id: Uuid,
     pub user_id: Uuid,
-    pub document_type_id: Option<Uuid>,
-    pub issued_date: Date,
-    pub expiry_date: Option<Date>,
-    pub description: Option<String>,
-    pub metadata: Option<Value>,
+    pub file_name: String,
+    pub status: String,
     pub created_at: DateTime,
-    pub updated_at: DateTime,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveColumn)]
 pub enum Column {
-    CertificateId,
+    FileUploadHistoryId,
     UserId,
-    DocumentTypeId,
-    IssuedDate,
-    ExpiryDate,
-    Description,
-    Metadata,
+    FileName,
+    Status,
     CreatedAt,
-    UpdatedAt,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DerivePrimaryKey)]
 pub enum PrimaryKey {
-    CertificateId,
+    FileUploadHistoryId,
 }
 
 impl PrimaryKeyTrait for PrimaryKey {
@@ -55,22 +46,17 @@ impl PrimaryKeyTrait for PrimaryKey {
 #[derive(Copy, Clone, Debug, EnumIter)]
 pub enum Relation {
     User,
-    DocumentType,
 }
 
 impl ColumnTrait for Column {
     type EntityName = Entity;
     fn def(&self) -> ColumnDef {
         match self {
-            Self::CertificateId => ColumnType::Uuid.def(),
+            Self::FileUploadHistoryId => ColumnType::Uuid.def(),
             Self::UserId => ColumnType::Uuid.def(),
-            Self::DocumentTypeId => ColumnType::Uuid.def().null(),
-            Self::IssuedDate => ColumnType::Date.def(),
-            Self::ExpiryDate => ColumnType::Date.def().null(),
-            Self::Description => ColumnType::Text.def().null(),
-            Self::Metadata => ColumnType::Json.def().null(),
+            Self::FileName => ColumnType::String(StringLen::None).def(),
+            Self::Status => ColumnType::String(StringLen::N(16u32)).def(),
             Self::CreatedAt => ColumnType::DateTime.def(),
-            Self::UpdatedAt => ColumnType::DateTime.def(),
         }
     }
 }
@@ -82,10 +68,6 @@ impl RelationTrait for Relation {
                 .from(Column::UserId)
                 .to(super::user::Column::UserId)
                 .into(),
-            Self::DocumentType => Entity::belongs_to(super::document_type::Entity)
-                .from(Column::DocumentTypeId)
-                .to(super::document_type::Column::DocumentTypeId)
-                .into(),
         }
     }
 }
@@ -93,12 +75,6 @@ impl RelationTrait for Relation {
 impl Related<super::user::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::User.def()
-    }
-}
-
-impl Related<super::document_type::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::DocumentType.def()
     }
 }
 

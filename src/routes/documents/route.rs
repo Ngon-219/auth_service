@@ -6,7 +6,9 @@ use axum::{
 use chrono::NaiveDate;
 use crate::extractor::AuthClaims;
 use crate::repositories::{ScoreRepository, UserRepository};
-use crate::entities::sea_orm_active_enums::RoleEnum;
+use crate::entities::{sea_orm_active_enums::RoleEnum, document_type};
+use crate::static_service::DATABASE_CONNECTION;
+use sea_orm::EntityTrait;
 use super::dto::{
     DocumentDataRequest, DocumentDataResponse, DocumentData,
     ScoreBoardItem, SemesterSummaryItem, CertificateItem,
@@ -177,8 +179,11 @@ pub async fn get_document_data(
 
         if !certificates.is_empty() {
             has_data = true;
-            certificates_data = Some(certificates.into_iter().map(|c| CertificateItem {
-                certificate_type: c.certificate_type,
+            certificates_data = Some(certificates.into_iter().map(|(c, doc_type)| CertificateItem {
+                document_type_name: doc_type
+                    .as_ref()
+                    .map(|dt| dt.document_type_name.clone())
+                    .unwrap_or_else(|| "Unknown".to_string()),
                 issued_date: c.issued_date.to_string(),
                 expiry_date: c.expiry_date.map(|d| d.to_string()),
                 description: c.description,
@@ -273,11 +278,31 @@ pub async fn mock_certificate(
         None
     };
 
+    let db = DATABASE_CONNECTION.get().expect("DATABASE_CONNECTION not set");
+    let document_type = document_type::Entity::find_by_id(payload.document_type_id)
+        .one(db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get document_type: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!(
+                    "Document type with id {} not found",
+                    payload.document_type_id
+                ),
+            )
+        })?;
+
     let score_repo = ScoreRepository::new();
     let certificate = score_repo
         .create_certificate_with_data(
             user_id,
-            &payload.certificate_type,
+            document_type.document_type_id,
             issued_date,
             expiry_date,
             payload.description.as_deref(),
@@ -297,7 +322,7 @@ pub async fn mock_certificate(
             success: true,
             message: "Certificate created successfully".to_string(),
             certificate: Some(CertificateItem {
-                certificate_type: certificate.certificate_type,
+                document_type_name: document_type.document_type_name,
                 issued_date: certificate.issued_date.to_string(),
                 expiry_date: certificate.expiry_date.map(|d| d.to_string()),
                 description: certificate.description,

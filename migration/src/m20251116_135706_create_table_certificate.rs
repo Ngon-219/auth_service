@@ -19,7 +19,7 @@ impl MigrationTrait for Migration {
                             .extra("DEFAULT gen_random_uuid()".to_string()),
                     )
                     .col(ColumnDef::new(Certificate::UserId).uuid().not_null())
-                    .col(ColumnDef::new(Certificate::CertificateType).string().not_null())
+                    .col(ColumnDef::new(Certificate::DocumentTypeId).uuid().not_null())
                     .col(ColumnDef::new(Certificate::IssuedDate).date().not_null())
                     .col(ColumnDef::new(Certificate::ExpiryDate).date().null())
                     .col(ColumnDef::new(Certificate::Description).text().null())
@@ -46,6 +46,16 @@ impl MigrationTrait for Migration {
                             .on_delete(ForeignKeyAction::Cascade)
                             .on_update(ForeignKeyAction::Cascade),
                     )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_certificate_document_type")
+                            .from_tbl(Certificate::Table)
+                            .from_col(Certificate::DocumentTypeId)
+                            .to_tbl(DocumentType::Table)
+                            .to_col(DocumentType::DocumentTypeId)
+                            .on_delete(ForeignKeyAction::Cascade)
+                            .on_update(ForeignKeyAction::Cascade),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -64,9 +74,9 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
-                    .name("idx_certificate_type")
+                    .name("idx_certificate_document_type_id")
                     .table(Certificate::Table)
-                    .col(Certificate::CertificateType)
+                    .col(Certificate::DocumentTypeId)
                     .to_owned(),
             )
             .await?;
@@ -98,7 +108,7 @@ impl MigrationTrait for Migration {
         manager
             .drop_index(
                 Index::drop()
-                    .name("idx_certificate_type")
+                    .name("idx_certificate_document_type_id")
                     .table(Certificate::Table)
                     .to_owned(),
             )
@@ -127,7 +137,7 @@ enum Certificate {
     Table,
     CertificateId,
     UserId,
-    CertificateType,
+    DocumentTypeId,
     IssuedDate,
     ExpiryDate,
     Description,
@@ -140,5 +150,11 @@ enum Certificate {
 enum User {
     Table,
     UserId,
+}
+
+#[derive(DeriveIden)]
+enum DocumentType {
+    Table,
+    DocumentTypeId,
 }
 

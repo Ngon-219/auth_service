@@ -6,6 +6,8 @@ use serde_json::json;
 use std::path::Path;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+use crate::repositories::file_upload_repository::FileUploadRepository;
+
 fn sanitize_filename(filename: &str) -> String {
     filename
         .chars()
@@ -18,7 +20,7 @@ fn sanitize_filename(filename: &str) -> String {
         .to_string()
 }
 
-pub async fn upload_chunk(mut multipart: Multipart) -> Result<Response, (StatusCode, String)> {
+pub async fn upload_chunk(mut multipart: Multipart, user_id: &str) -> Result<Response, (StatusCode, String)> {
     let mut file_name = String::new();
     let mut chunk_number = 0usize;
     let mut total_chunks = 0usize;
@@ -149,7 +151,23 @@ pub async fn upload_chunk(mut multipart: Multipart) -> Result<Response, (StatusC
 
     if is_complete {
         // Assemble final file
-        let output_path = format!("./uploads/{}", file_name);
+        let now = chrono::Local::now();
+        let timestamp = now.format("%Y%m%d%H%M%S").to_string();
+        let path = std::path::Path::new(&file_name);
+        let file_stem = path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("file");
+
+        let extension = path.extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+
+        let new_file_name = if extension.is_empty() {
+            format!("{}_{}", file_stem, timestamp)
+        } else {
+            format!("{}_{}.{}", file_stem, timestamp, extension)
+        };
+        let output_path = format!("./uploads/{}", new_file_name);
         assemble_file(&temp_dir, &output_path, total_chunks)
             .await
             .map_err(|e| {
@@ -158,6 +176,18 @@ pub async fn upload_chunk(mut multipart: Multipart) -> Result<Response, (StatusC
                     format!("Failed to assemble file: {}", e),
                 )
             })?;
+
+        let upload_file_history_repo = FileUploadRepository::new();
+        upload_file_history_repo
+            .create_new_file_upload(&new_file_name, user_id)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to save upload history: {}", e),
+                )
+            })?;
+
 
         Ok((
             StatusCode::OK,

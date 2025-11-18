@@ -1,4 +1,4 @@
-use crate::entities::{score_board, semester_summary, certificate};
+use crate::entities::{score_board, semester_summary, certificate, document_type};
 use crate::static_service::DATABASE_CONNECTION;
 use anyhow::Result;
 use sea_orm::{
@@ -21,6 +21,34 @@ impl ScoreRepository {
         DATABASE_CONNECTION
             .get()
             .expect("DATABASE_CONNECTION not set")
+    }
+
+    /// Find or create document_type by name
+    pub async fn find_or_create_document_type(
+        &self,
+        document_type_name: &str,
+    ) -> Result<Uuid> {
+        let db = self.get_connection();
+        
+        // Try to find existing document_type
+        let existing = document_type::Entity::find()
+            .filter(document_type::Column::DocumentTypeName.eq(document_type_name))
+            .one(db)
+            .await?;
+        
+        if let Some(doc_type) = existing {
+            return Ok(doc_type.document_type_id);
+        }
+        
+        // Create new document_type if not found
+        let new_doc_type = document_type::ActiveModel {
+            document_type_name: Set(document_type_name.to_string()),
+            description: Set(Some(format!("Document type for {}", document_type_name))),
+            ..Default::default()
+        };
+        
+        let result = new_doc_type.insert(db).await?;
+        Ok(result.document_type_id)
     }
 
     /// Get all scoreboard records for a user up to current date
@@ -61,33 +89,45 @@ impl ScoreRepository {
         Ok(summaries)
     }
 
-    /// Get certificates by user_id and certificate type
+    /// Get certificates by user_id and document_type name with document_type
     pub async fn get_certificates_by_user_id_and_type(
         &self,
         user_id: Uuid,
-        certificate_type: &str,
-    ) -> Result<Vec<certificate::Model>> {
+        document_type_name: &str,
+    ) -> Result<Vec<(certificate::Model, Option<document_type::Model>)>> {
         let db = self.get_connection();
         
-        let certificates = certificate::Entity::find()
-            .filter(certificate::Column::UserId.eq(user_id))
-            .filter(certificate::Column::CertificateType.eq(certificate_type))
-            .order_by_desc(certificate::Column::IssuedDate)
-            .all(db)
+        // First find the document_type_id
+        let doc_type = document_type::Entity::find()
+            .filter(document_type::Column::DocumentTypeName.eq(document_type_name))
+            .one(db)
             .await?;
         
-        Ok(certificates)
+        if let Some(doc_type) = doc_type {
+            let certificates = certificate::Entity::find()
+                .filter(certificate::Column::UserId.eq(user_id))
+                .filter(certificate::Column::DocumentTypeId.eq(doc_type.document_type_id))
+                .find_also_related(document_type::Entity)
+                .order_by_desc(certificate::Column::IssuedDate)
+                .all(db)
+                .await?;
+            
+            Ok(certificates)
+        } else {
+            Ok(Vec::new())
+        }
     }
 
-    /// Get all certificates for a user
+    /// Get all certificates for a user with document_type
     pub async fn get_certificates_by_user_id(
         &self,
         user_id: Uuid,
-    ) -> Result<Vec<certificate::Model>> {
+    ) -> Result<Vec<(certificate::Model, Option<document_type::Model>)>> {
         let db = self.get_connection();
         
         let certificates = certificate::Entity::find()
             .filter(certificate::Column::UserId.eq(user_id))
+            .find_also_related(document_type::Entity)
             .order_by_desc(certificate::Column::IssuedDate)
             .all(db)
             .await?;
@@ -108,9 +148,12 @@ impl ScoreRepository {
         let issued_date = now - chrono::Duration::try_days(rng.random_range(0..365)).unwrap_or(chrono::Duration::zero());
         let expiry_date = Some(now + chrono::Duration::try_days(rng.random_range(365..1825)).unwrap_or(chrono::Duration::zero()));
 
+        // Find or create document_type
+        let document_type_id = self.find_or_create_document_type(certificate_type).await?;
+
         let certificate = certificate::ActiveModel {
             user_id: Set(user_id),
-            certificate_type: Set(certificate_type.to_string()),
+            document_type_id: Set(Some(document_type_id)),
             issued_date: Set(issued_date),
             expiry_date: Set(expiry_date),
             description: Set(Some(format!("Mock {} certificate", certificate_type))),
@@ -137,7 +180,7 @@ impl ScoreRepository {
     pub async fn create_certificate_with_data(
         &self,
         user_id: Uuid,
-        certificate_type: &str,
+        document_type_id: Uuid,
         issued_date: chrono::NaiveDate,
         expiry_date: Option<chrono::NaiveDate>,
         description: Option<&str>,
@@ -147,7 +190,7 @@ impl ScoreRepository {
 
         let certificate = certificate::ActiveModel {
             user_id: Set(user_id),
-            certificate_type: Set(certificate_type.to_string()),
+            document_type_id: Set(Some(document_type_id)),
             issued_date: Set(issued_date),
             expiry_date: Set(expiry_date),
             description: Set(description.map(|s| s.to_string())),
