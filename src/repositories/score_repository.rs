@@ -1,14 +1,13 @@
-use crate::entities::{score_board, semester_summary, certificate, document_type};
+use crate::entities::{certificate, document_type, score_board, semester_summary};
 use crate::static_service::DATABASE_CONNECTION;
 use anyhow::Result;
+use chrono::Utc;
+use rand::Rng;
+use sea_orm::prelude::Decimal;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    ActiveModelTrait, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
 };
 use uuid::Uuid;
-use chrono::Utc;
-use sea_orm::prelude::Decimal;
-use rand::Rng;
 
 pub struct ScoreRepository;
 
@@ -24,29 +23,26 @@ impl ScoreRepository {
     }
 
     /// Find or create document_type by name
-    pub async fn find_or_create_document_type(
-        &self,
-        document_type_name: &str,
-    ) -> Result<Uuid> {
+    pub async fn find_or_create_document_type(&self, document_type_name: &str) -> Result<Uuid> {
         let db = self.get_connection();
-        
+
         // Try to find existing document_type
         let existing = document_type::Entity::find()
             .filter(document_type::Column::DocumentTypeName.eq(document_type_name))
             .one(db)
             .await?;
-        
+
         if let Some(doc_type) = existing {
             return Ok(doc_type.document_type_id);
         }
-        
+
         // Create new document_type if not found
         let new_doc_type = document_type::ActiveModel {
             document_type_name: Set(document_type_name.to_string()),
             description: Set(Some(format!("Document type for {}", document_type_name))),
             ..Default::default()
         };
-        
+
         let result = new_doc_type.insert(db).await?;
         Ok(result.document_type_id)
     }
@@ -58,7 +54,7 @@ impl ScoreRepository {
     ) -> Result<Vec<score_board::Model>> {
         let db = self.get_connection();
         let now = Utc::now().naive_utc();
-        
+
         let scores = score_board::Entity::find()
             .filter(score_board::Column::UserId.eq(user_id))
             .filter(score_board::Column::CreatedAt.lte(now))
@@ -66,7 +62,7 @@ impl ScoreRepository {
             .order_by_asc(score_board::Column::Semester)
             .all(db)
             .await?;
-        
+
         Ok(scores)
     }
 
@@ -77,7 +73,7 @@ impl ScoreRepository {
     ) -> Result<Vec<semester_summary::Model>> {
         let db = self.get_connection();
         let now = Utc::now().naive_utc();
-        
+
         let summaries = semester_summary::Entity::find()
             .filter(semester_summary::Column::UserId.eq(user_id))
             .filter(semester_summary::Column::CreatedAt.lte(now))
@@ -85,7 +81,7 @@ impl ScoreRepository {
             .order_by_asc(semester_summary::Column::Semester)
             .all(db)
             .await?;
-        
+
         Ok(summaries)
     }
 
@@ -96,13 +92,13 @@ impl ScoreRepository {
         document_type_name: &str,
     ) -> Result<Vec<(certificate::Model, Option<document_type::Model>)>> {
         let db = self.get_connection();
-        
+
         // First find the document_type_id
         let doc_type = document_type::Entity::find()
             .filter(document_type::Column::DocumentTypeName.eq(document_type_name))
             .one(db)
             .await?;
-        
+
         if let Some(doc_type) = doc_type {
             let certificates = certificate::Entity::find()
                 .filter(certificate::Column::UserId.eq(user_id))
@@ -111,7 +107,7 @@ impl ScoreRepository {
                 .order_by_desc(certificate::Column::IssuedDate)
                 .all(db)
                 .await?;
-            
+
             Ok(certificates)
         } else {
             Ok(Vec::new())
@@ -124,14 +120,14 @@ impl ScoreRepository {
         user_id: Uuid,
     ) -> Result<Vec<(certificate::Model, Option<document_type::Model>)>> {
         let db = self.get_connection();
-        
+
         let certificates = certificate::Entity::find()
             .filter(certificate::Column::UserId.eq(user_id))
             .find_also_related(document_type::Entity)
             .order_by_desc(certificate::Column::IssuedDate)
             .all(db)
             .await?;
-        
+
         Ok(certificates)
     }
 
@@ -143,17 +139,22 @@ impl ScoreRepository {
     ) -> Result<certificate::Model> {
         let db = self.get_connection();
         let mut rng = rand::rng();
-        
+
         let now = Utc::now().naive_utc().date();
-        let issued_date = now - chrono::Duration::try_days(rng.random_range(0..365)).unwrap_or(chrono::Duration::zero());
-        let expiry_date = Some(now + chrono::Duration::try_days(rng.random_range(365..1825)).unwrap_or(chrono::Duration::zero()));
+        let issued_date = now
+            - chrono::Duration::try_days(rng.random_range(0..365))
+                .unwrap_or(chrono::Duration::zero());
+        let expiry_date = Some(
+            now + chrono::Duration::try_days(rng.random_range(365..1825))
+                .unwrap_or(chrono::Duration::zero()),
+        );
 
         // Find or create document_type
         let document_type_id = self.find_or_create_document_type(certificate_type).await?;
 
         let certificate = certificate::ActiveModel {
             user_id: Set(user_id),
-            document_type_id: Set(Some(document_type_id)),
+            document_type_id: Set(document_type_id),
             issued_date: Set(issued_date),
             expiry_date: Set(expiry_date),
             description: Set(Some(format!("Mock {} certificate", certificate_type))),
@@ -169,10 +170,7 @@ impl ScoreRepository {
     }
 
     /// Create mock diploma data for a user
-    pub async fn create_mock_diploma(
-        &self,
-        user_id: Uuid,
-    ) -> Result<certificate::Model> {
+    pub async fn create_mock_diploma(&self, user_id: Uuid) -> Result<certificate::Model> {
         self.create_mock_certificate(user_id, "Diploma").await
     }
 
@@ -190,7 +188,7 @@ impl ScoreRepository {
 
         let certificate = certificate::ActiveModel {
             user_id: Set(user_id),
-            document_type_id: Set(Some(document_type_id)),
+            document_type_id: Set(document_type_id),
             issued_date: Set(issued_date),
             expiry_date: Set(expiry_date),
             description: Set(description.map(|s| s.to_string())),
@@ -209,20 +207,36 @@ impl ScoreRepository {
     ) -> Result<(Vec<score_board::Model>, Vec<semester_summary::Model>)> {
         let db = self.get_connection();
         let mut rng = rand::rng();
-        
+
         // Generate data for 4-8 semesters
         let num_semesters = rng.random_range(4..9);
         let mut scoreboard_records = Vec::new();
         let mut semester_summaries = Vec::new();
-        
+
         // Remove unused variable
-        let academic_years = vec!["2020-2021", "2021-2022", "2022-2023", "2023-2024", "2024-2025"];
+        let academic_years = vec![
+            "2020-2021",
+            "2021-2022",
+            "2022-2023",
+            "2023-2024",
+            "2024-2025",
+        ];
         let semesters = vec!["HK1", "HK2", "HK3"];
         let course_names = vec![
-            "Toán học đại cương", "Vật lý đại cương", "Hóa học đại cương",
-            "Lập trình C++", "Cấu trúc dữ liệu", "Giải tích", "Đại số tuyến tính",
-            "Xác suất thống kê", "Cơ sở dữ liệu", "Mạng máy tính", "Hệ điều hành",
-            "Công nghệ phần mềm", "Trí tuệ nhân tạo", "Đồ họa máy tính",
+            "Toán học đại cương",
+            "Vật lý đại cương",
+            "Hóa học đại cương",
+            "Lập trình C++",
+            "Cấu trúc dữ liệu",
+            "Giải tích",
+            "Đại số tuyến tính",
+            "Xác suất thống kê",
+            "Cơ sở dữ liệu",
+            "Mạng máy tính",
+            "Hệ điều hành",
+            "Công nghệ phần mềm",
+            "Trí tuệ nhân tạo",
+            "Đồ họa máy tính",
         ];
         let letter_grades = vec!["A", "B+", "B", "C+", "C", "D+", "D", "F"];
         // Status is determined by score, no need for separate vector
@@ -230,7 +244,7 @@ impl ScoreRepository {
         for i in 0..num_semesters {
             let academic_year = academic_years[i % academic_years.len()];
             let semester = semesters[i % semesters.len()];
-            
+
             // Generate 5-8 courses per semester
             let num_courses = rng.random_range(5..9);
             let mut total_credits = 0;
@@ -242,10 +256,14 @@ impl ScoreRepository {
                 let credits = rng.random_range(2..5);
                 let score = rng.random_range(50..101) as f64;
                 let letter_grade = letter_grades[rng.random_range(0..letter_grades.len())];
-                let status = if score >= 50.0 { "Đạt" } else { "Không đạt" };
+                let status = if score >= 50.0 {
+                    "Đạt"
+                } else {
+                    "Không đạt"
+                };
 
                 let score_decimal = Decimal::try_from(score).unwrap_or(Decimal::ZERO);
-                
+
                 if status == "Đạt" {
                     total_passed_credits += credits;
                     // Calculate GPA weight (A=4.0, B+=3.5, B=3.0, C+=2.5, C=2.0, D+=1.5, D=1.0, F=0.0)
@@ -270,8 +288,14 @@ impl ScoreRepository {
                     course_code: Set(Some(format!("CS{:03}", rng.random_range(100..999)))),
                     credits: Set(credits),
                     score1: Set(Some(score_decimal)),
-                    score2: Set(Some(Decimal::try_from(rng.random_range(40..101) as f64).unwrap_or(Decimal::ZERO))),
-                    score3: Set(Some(Decimal::try_from(rng.random_range(40..101) as f64).unwrap_or(Decimal::ZERO))),
+                    score2: Set(Some(
+                        Decimal::try_from(rng.random_range(40..101) as f64)
+                            .unwrap_or(Decimal::ZERO),
+                    )),
+                    score3: Set(Some(
+                        Decimal::try_from(rng.random_range(40..101) as f64)
+                            .unwrap_or(Decimal::ZERO),
+                    )),
                     letter_grade: Set(Some(letter_grade.to_string())),
                     status: Set(Some(status.to_string())),
                     semester: Set(semester.to_string()),
@@ -329,39 +353,77 @@ impl ScoreRepository {
         user_id: Uuid,
     ) -> Result<(Vec<score_board::Model>, Vec<semester_summary::Model>)> {
         let db = self.get_connection();
-        
+
         // Generate ALL random data BEFORE any await to avoid Send issues
         let academic_years = vec!["2020-2021", "2021-2022", "2022-2023", "2023-2024"];
         let semesters = vec!["HK1", "HK2", "HK1", "HK2"]; // 4 semesters: HK1, HK2, HK1, HK2
         let course_names = vec![
-            "Toán học đại cương", "Vật lý đại cương", "Hóa học đại cương",
-            "Lập trình C++", "Cấu trúc dữ liệu", "Giải tích", "Đại số tuyến tính",
-            "Xác suất thống kê", "Cơ sở dữ liệu", "Mạng máy tính", "Hệ điều hành",
-            "Công nghệ phần mềm", "Trí tuệ nhân tạo", "Đồ họa máy tính",
-            "Lập trình Java", "Lập trình Python", "Hệ thống thông tin", "An toàn thông tin",
+            "Toán học đại cương",
+            "Vật lý đại cương",
+            "Hóa học đại cương",
+            "Lập trình C++",
+            "Cấu trúc dữ liệu",
+            "Giải tích",
+            "Đại số tuyến tính",
+            "Xác suất thống kê",
+            "Cơ sở dữ liệu",
+            "Mạng máy tính",
+            "Hệ điều hành",
+            "Công nghệ phần mềm",
+            "Trí tuệ nhân tạo",
+            "Đồ họa máy tính",
+            "Lập trình Java",
+            "Lập trình Python",
+            "Hệ thống thông tin",
+            "An toàn thông tin",
         ];
 
         // Pre-generate all data for all semesters before any await
-        let mut all_course_data: Vec<Vec<(String, String, String, i32, Decimal, Decimal, Decimal, Decimal, Decimal, Decimal, String, String, String, String)>> = Vec::new();
-        let mut all_semester_data: Vec<(String, String, Decimal, Option<String>, Option<i32>, Option<i32>)> = Vec::new();
+        let mut all_course_data: Vec<
+            Vec<(
+                String,
+                String,
+                String,
+                i32,
+                Decimal,
+                Decimal,
+                Decimal,
+                Decimal,
+                Decimal,
+                Decimal,
+                String,
+                String,
+                String,
+                String,
+            )>,
+        > = Vec::new();
+        let mut all_semester_data: Vec<(
+            String,
+            String,
+            Decimal,
+            Option<String>,
+            Option<i32>,
+            Option<i32>,
+        )> = Vec::new();
 
         {
             let mut rng = rand::rng();
             for i in 0..4 {
                 let academic_year = academic_years[i % academic_years.len()].to_string();
                 let semester = semesters[i % semesters.len()].to_string();
-                
+
                 let num_courses = rng.random_range(5..9);
                 let mut total_credits = 0;
                 let mut total_passed_credits = 0;
                 let mut weighted_sum = Decimal::ZERO;
-                
+
                 let mut course_data = Vec::new();
                 for j in 0..num_courses {
-                    let course_name = course_names[rng.random_range(0..course_names.len())].to_string();
+                    let course_name =
+                        course_names[rng.random_range(0..course_names.len())].to_string();
                     let credits = rng.random_range(2..5);
                     let score = rng.random_range(50..101) as f64;
-                    
+
                     let letter_grade = match score {
                         s if s >= 90.0 => "A",
                         s if s >= 85.0 => "B+",
@@ -372,10 +434,14 @@ impl ScoreRepository {
                         s if s >= 60.0 => "D",
                         _ => "F",
                     };
-                    
-                    let status = if score >= 50.0 { "Đạt" } else { "Không đạt" };
+
+                    let status = if score >= 50.0 {
+                        "Đạt"
+                    } else {
+                        "Không đạt"
+                    };
                     let score_decimal = Decimal::try_from(score).unwrap_or(Decimal::ZERO);
-                    
+
                     if status == "Đạt" {
                         total_passed_credits += credits;
                         let gpa_weight = match letter_grade {
@@ -392,11 +458,16 @@ impl ScoreRepository {
                     }
                     total_credits += credits;
 
-                    let score2 = Decimal::try_from(rng.random_range(40..101) as f64).unwrap_or(Decimal::ZERO);
-                    let score3 = Decimal::try_from(rng.random_range(40..101) as f64).unwrap_or(Decimal::ZERO);
-                    let score4 = Decimal::try_from(rng.random_range(40..101) as f64).unwrap_or(Decimal::ZERO);
-                    let score5 = Decimal::try_from(rng.random_range(40..101) as f64).unwrap_or(Decimal::ZERO);
-                    let score6 = Decimal::try_from(rng.random_range(40..101) as f64).unwrap_or(Decimal::ZERO);
+                    let score2 = Decimal::try_from(rng.random_range(40..101) as f64)
+                        .unwrap_or(Decimal::ZERO);
+                    let score3 = Decimal::try_from(rng.random_range(40..101) as f64)
+                        .unwrap_or(Decimal::ZERO);
+                    let score4 = Decimal::try_from(rng.random_range(40..101) as f64)
+                        .unwrap_or(Decimal::ZERO);
+                    let score5 = Decimal::try_from(rng.random_range(40..101) as f64)
+                        .unwrap_or(Decimal::ZERO);
+                    let score6 = Decimal::try_from(rng.random_range(40..101) as f64)
+                        .unwrap_or(Decimal::ZERO);
                     let course_code = format!("CS{:03}", rng.random_range(100..999));
 
                     course_data.push((
@@ -416,7 +487,7 @@ impl ScoreRepository {
                         academic_year.clone(),
                     ));
                 }
-                
+
                 let gpa = if total_credits > 0 {
                     weighted_sum / Decimal::from(total_credits)
                 } else {
@@ -448,7 +519,23 @@ impl ScoreRepository {
         let mut semester_summaries = Vec::new();
 
         for course_data in all_course_data {
-            for (course_id, course_name, course_code, credits, score1, score2, score3, score4, score5, score6, letter_grade, status, semester, academic_year) in course_data {
+            for (
+                course_id,
+                course_name,
+                course_code,
+                credits,
+                score1,
+                score2,
+                score3,
+                score4,
+                score5,
+                score6,
+                letter_grade,
+                status,
+                semester,
+                academic_year,
+            ) in course_data
+            {
                 let scoreboard = score_board::ActiveModel {
                     user_id: Set(user_id),
                     course_id: Set(course_id),
@@ -476,7 +563,9 @@ impl ScoreRepository {
             }
         }
 
-        for (semester, academic_year, gpa, classification, total_credits, total_passed_credits) in all_semester_data {
+        for (semester, academic_year, gpa, classification, total_credits, total_passed_credits) in
+            all_semester_data
+        {
             let semester_summary = semester_summary::ActiveModel {
                 user_id: Set(user_id),
                 semester: Set(semester),
@@ -498,4 +587,3 @@ impl ScoreRepository {
         Ok((scoreboard_records, semester_summaries))
     }
 }
-

@@ -11,6 +11,7 @@ mod m20251116_134558_create_table_score_board;
 mod m20251116_135706_create_table_certificate;
 mod m20251117_021133_create_table_request;
 mod m20251118_092402_create_table_file_upload;
+mod m20251118_125437_add_status_column_table_users;
 
 pub struct Migrator;
 
@@ -29,6 +30,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20251116_135706_create_table_certificate::Migration),
             Box::new(m20251117_021133_create_table_request::Migration),
             Box::new(m20251118_092402_create_table_file_upload::Migration),
+            Box::new(m20251118_125437_add_status_column_table_users::Migration),
         ]
     }
 }

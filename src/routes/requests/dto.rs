@@ -1,6 +1,6 @@
+use crate::entities::sea_orm_active_enums::RequestStatus;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use crate::entities::sea_orm_active_enums::RequestStatusEnum;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateRequestRequest {
@@ -13,7 +13,7 @@ pub struct RequestResponse {
     pub request_id: String,
     pub user_id: String,
     pub content: String,
-    pub status: RequestStatusEnum,
+    pub status: RequestStatus,
     pub scheduled_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -21,8 +21,8 @@ pub struct RequestResponse {
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ScheduleRequestRequest {
-    pub scheduled_at: String, // Format: YYYY-MM-DDTHH:MM:SS
-    pub message: Option<String>, // Optional message to include in email
+    pub scheduled_at: String,               // Format: YYYY-MM-DDTHH:MM:SS
+    pub message: Option<String>,            // Optional message to include in email
     pub authenticator_code: Option<String>, // Required if MFA is enabled
 }
 
@@ -48,7 +48,7 @@ pub struct RequestQueryParams {
     pub page: u32,
     #[serde(default = "default_page_size")]
     pub page_size: u32,
-    pub status: Option<RequestStatusEnum>,
+    pub status: Option<RequestStatus>,
 }
 
 fn default_page() -> u32 {
@@ -58,4 +58,3 @@ fn default_page() -> u32 {
 fn default_page_size() -> u32 {
     20
 }
-

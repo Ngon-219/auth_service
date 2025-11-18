@@ -385,10 +385,7 @@ pub async fn reset_password(
 
     // Verify OTP code
     if otp_record.otp_code != payload.otp_code {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Invalid OTP code".to_string(),
-        ));
+        return Err((StatusCode::BAD_REQUEST, "Invalid OTP code".to_string()));
     }
 
     // Mark OTP as verified
@@ -403,12 +400,13 @@ pub async fn reset_password(
         })?;
 
     // Hash new password
-    let hashed_password = bcrypt::hash(&payload.new_password, bcrypt::DEFAULT_COST).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to hash password: {}", e),
-        )
-    })?;
+    let hashed_password =
+        bcrypt::hash(&payload.new_password, bcrypt::DEFAULT_COST).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to hash password: {}", e),
+            )
+        })?;
 
     // Update user password
     use crate::repositories::user_repository::UserUpdate;

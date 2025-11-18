@@ -5,6 +5,7 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, Qu
 use uuid::Uuid;
 
 use crate::config::APP_CONFIG;
+use crate::entities::sea_orm_active_enums::UserStatus;
 use crate::entities::{sea_orm_active_enums::RoleEnum, user, wallet};
 use crate::utils::encryption::encrypt_private_key;
 
@@ -59,6 +60,7 @@ pub async fn initialize_admin_user(db: &DatabaseConnection) -> Result<()> {
         role: Set(RoleEnum::Admin),
         student_code: Set(None),
         deleted_at: Set(None),
+        status: Set(UserStatus::Sync),
     };
 
     admin_user

@@ -51,10 +51,10 @@ pub struct ForgotPasswordResponse {
 pub struct ResetPasswordRequest {
     #[schema(example = "user@example.com")]
     pub email: String,
-    
+
     #[schema(example = "12345678")]
     pub otp_code: String,
-    
+
     #[schema(example = "newPassword123")]
     pub new_password: String,
 }

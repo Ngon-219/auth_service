@@ -95,7 +95,7 @@ pub struct MockDataCreated {
 pub struct MockCertificateRequest {
     pub user_email: String,
     pub document_type_id: Uuid,
-    pub issued_date: String, // Format: YYYY-MM-DD
+    pub issued_date: String,         // Format: YYYY-MM-DD
     pub expiry_date: Option<String>, // Format: YYYY-MM-DD
     pub description: Option<String>,
     pub metadata: Option<serde_json::Value>,
@@ -120,4 +120,3 @@ pub struct MockTranscriptResponse {
     pub scoreboard_count: u32,
     pub semester_summaries_count: u32,
 }
-

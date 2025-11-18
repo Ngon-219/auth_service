@@ -1,3 +1,13 @@
+use super::dto::{
+    CreateRequestRequest, RequestListResponse, RequestQueryParams, RequestResponse,
+    ScheduleRequestRequest, ScheduleRequestResponse,
+};
+use crate::entities::sea_orm_active_enums::RequestStatus;
+use crate::extractor::AuthClaims;
+use crate::rabbitmq_service::consumers::get_rabbitmq_connetion;
+use crate::rabbitmq_service::rabbitmq_service::RabbitMQService;
+use crate::repositories::mfa_verify_result::MfaVerifyResult;
+use crate::repositories::{RequestRepository, UserMfaRepository, UserRepository};
 use axum::{
     Json, Router,
     extract::{Path, Query},
@@ -5,22 +15,18 @@ use axum::{
     routing::{get, post},
 };
 use chrono::NaiveDateTime;
-use crate::extractor::AuthClaims;
-use crate::repositories::{RequestRepository, UserRepository, UserMfaRepository};
-use crate::repositories::mfa_verify_result::MfaVerifyResult;
-use crate::entities::sea_orm_active_enums::RequestStatusEnum;
-use crate::rabbitmq_service::consumers::get_rabbitmq_connetion;
-use crate::rabbitmq_service::rabbitmq_service::RabbitMQService;
 use do_an_lib::structs::token_claims::UserRole;
-use super::dto::{
-    CreateRequestRequest, RequestResponse, ScheduleRequestRequest,
-    ScheduleRequestResponse, RequestListResponse, RequestQueryParams,
-};
 
 pub fn create_route() -> Router {
     Router::new()
-        .route("/api/v1/requests", post(create_request).get(get_my_requests))
-        .route("/api/v1/requests/{request_id}/schedule", post(schedule_request))
+        .route(
+            "/api/v1/requests",
+            post(create_request).get(get_my_requests),
+        )
+        .route(
+            "/api/v1/requests/{request_id}/schedule",
+            post(schedule_request),
+        )
         .route("/api/v1/requests/all", get(get_all_requests))
 }
 
@@ -164,15 +170,12 @@ pub async fn get_my_requests(
     })?;
 
     let request_repo = RequestRepository::new();
-    let requests = request_repo
-        .find_by_user_id(user_id)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get requests: {}", e),
-            )
-        })?;
+    let requests = request_repo.find_by_user_id(user_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get requests: {}", e),
+        )
+    })?;
 
     let request_responses: Vec<RequestResponse> = requests
         .into_iter()
@@ -319,7 +322,7 @@ pub async fn schedule_request(
         })?;
 
     let request_repo = RequestRepository::new();
-    
+
     // Get request to find user
     let request = request_repo
         .find_by_id(request_uuid)
@@ -330,16 +333,11 @@ pub async fn schedule_request(
                 format!("Failed to get request: {}", e),
             )
         })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                "Request not found".to_string(),
-            )
-        })?;
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Request not found".to_string()))?;
 
     // Update request status and scheduled_at
     let updated_request = request_repo
-        .update_status_and_schedule(request_uuid, RequestStatusEnum::Scheduled, Some(scheduled_at))
+        .update_status_and_schedule(request_uuid, RequestStatus::Scheduled, Some(scheduled_at))
         .await
         .map_err(|e| {
             (
@@ -359,12 +357,7 @@ pub async fn schedule_request(
                 format!("Failed to get user: {}", e),
             )
         })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                "User not found".to_string(),
-            )
-        })?;
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "User not found".to_string()))?;
 
     // Send email via RabbitMQ
     let rabbitmq_conn = get_rabbitmq_connetion().await;
@@ -377,19 +370,14 @@ pub async fn schedule_request(
         payload.message.as_deref().unwrap_or("")
     );
 
-    RabbitMQService::publish_to_mail_queue(
-        rabbitmq_conn,
-        &user.email,
-        email_subject,
-        &email_body,
-    )
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to send email: {}", e),
-        )
-    })?;
+    RabbitMQService::publish_to_mail_queue(rabbitmq_conn, &user.email, email_subject, &email_body)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to send email: {}", e),
+            )
+        })?;
 
     Ok((
         StatusCode::OK,
@@ -415,7 +403,7 @@ pub async fn schedule_request(
     params(
         ("page" = Option<u32>, Query, description = "Page number (default: 1)"),
         ("page_size" = Option<u32>, Query, description = "Page size (default: 20)"),
-        ("status" = Option<RequestStatusEnum>, Query, description = "Filter by status")
+        ("status" = Option<RequestStatus>, Query, description = "Filter by status")
     ),
     responses(
         (status = 200, description = "All requests retrieved successfully", body = RequestListResponse),
@@ -482,4 +470,3 @@ pub async fn get_all_requests(
         }),
     ))
 }
-

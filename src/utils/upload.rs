@@ -1,3 +1,4 @@
+use crate::repositories::file_upload_repository::FileUploadRepository;
 use axum::Json;
 use axum::extract::Multipart;
 use axum::response::{IntoResponse, Response};
@@ -6,7 +7,6 @@ use serde_json::json;
 use std::path::Path;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
-use crate::repositories::file_upload_repository::FileUploadRepository;
 
 fn sanitize_filename(filename: &str) -> String {
     filename
@@ -20,7 +20,10 @@ fn sanitize_filename(filename: &str) -> String {
         .to_string()
 }
 
-pub async fn upload_chunk(mut multipart: Multipart, user_id: &str) -> Result<Response, (StatusCode, String)> {
+pub async fn upload_chunk(
+    mut multipart: Multipart,
+    user_id: &str,
+) -> Result<Response, (StatusCode, String)> {
     let mut file_name = String::new();
     let mut chunk_number = 0usize;
     let mut total_chunks = 0usize;
@@ -154,13 +157,9 @@ pub async fn upload_chunk(mut multipart: Multipart, user_id: &str) -> Result<Res
         let now = chrono::Local::now();
         let timestamp = now.format("%Y%m%d%H%M%S").to_string();
         let path = std::path::Path::new(&file_name);
-        let file_stem = path.file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("file");
+        let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
 
-        let extension = path.extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
+        let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("");
 
         let new_file_name = if extension.is_empty() {
             format!("{}_{}", file_stem, timestamp)
@@ -187,7 +186,6 @@ pub async fn upload_chunk(mut multipart: Multipart, user_id: &str) -> Result<Res
                     format!("Failed to save upload history: {}", e),
                 )
             })?;
-
 
         Ok((
             StatusCode::OK,

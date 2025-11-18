@@ -1,21 +1,15 @@
-use axum::{
-    Json, Router,
-    http::StatusCode,
-    routing::post,
+use super::dto::{
+    CertificateItem, DocumentData, DocumentDataRequest, DocumentDataResponse,
+    MockCertificateRequest, MockCertificateResponse, MockTranscriptRequest, MockTranscriptResponse,
+    ScoreBoardItem, SemesterSummaryItem, UserInfo,
 };
-use chrono::NaiveDate;
+use crate::entities::{document_type, sea_orm_active_enums::RoleEnum};
 use crate::extractor::AuthClaims;
 use crate::repositories::{ScoreRepository, UserRepository};
-use crate::entities::{sea_orm_active_enums::RoleEnum, document_type};
 use crate::static_service::DATABASE_CONNECTION;
+use axum::{Json, Router, http::StatusCode, routing::post};
+use chrono::NaiveDate;
 use sea_orm::EntityTrait;
-use super::dto::{
-    DocumentDataRequest, DocumentDataResponse, DocumentData,
-    ScoreBoardItem, SemesterSummaryItem, CertificateItem,
-    MockCertificateRequest, MockCertificateResponse,
-    MockTranscriptRequest, MockTranscriptResponse,
-    UserInfo,
-};
 
 pub fn create_route() -> Router {
     Router::new()
@@ -49,18 +43,16 @@ pub async fn get_document_data(
 
     // Get user information
     let user_repo = UserRepository::new();
-    let user = user_repo.find_by_id(user_id).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to get user: {}", e),
-        )
-    })?
-    .ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            "User not found".to_string(),
-        )
-    })?;
+    let user = user_repo
+        .find_by_id(user_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get user: {}", e),
+            )
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "User not found".to_string()))?;
 
     let user_info = UserInfo {
         user_id: user.user_id.to_string(),
@@ -83,18 +75,18 @@ pub async fn get_document_data(
     // Determine what data to fetch based on document type
     // Standard types: Certificate, Transcript, Diploma
     let is_transcript = document_type_name.eq_ignore_ascii_case("Transcript")
-        || document_type_name_lower.contains("bảng điểm") 
-        || document_type_name_lower.contains("transcript") 
+        || document_type_name_lower.contains("bảng điểm")
+        || document_type_name_lower.contains("transcript")
         || document_type_name_lower.contains("bang diem");
-    
+
     let is_diploma = document_type_name.eq_ignore_ascii_case("Diploma")
-        || document_type_name_lower.contains("bằng tốt nghiệp") 
-        || document_type_name_lower.contains("diploma") 
+        || document_type_name_lower.contains("bằng tốt nghiệp")
+        || document_type_name_lower.contains("diploma")
         || document_type_name_lower.contains("bang tot nghiep");
-    
+
     let is_certificate = document_type_name.eq_ignore_ascii_case("Certificate")
-        || document_type_name_lower.contains("chứng chỉ") 
-        || document_type_name_lower.contains("certificate") 
+        || document_type_name_lower.contains("chứng chỉ")
+        || document_type_name_lower.contains("certificate")
         || document_type_name_lower.contains("chung chi");
 
     let mut scoreboard_data: Option<Vec<ScoreBoardItem>> = None;
@@ -105,53 +97,81 @@ pub async fn get_document_data(
     // Fetch scoreboard and semester summaries for transcript or diploma
     if is_transcript || is_diploma {
         // Get scoreboard data
-        let scoreboard = score_repo.get_scoreboard_by_user_id(user_id).await.map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get scoreboard: {}", e),
-            )
-        })?;
+        let scoreboard = score_repo
+            .get_scoreboard_by_user_id(user_id)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to get scoreboard: {}", e),
+                )
+            })?;
 
         if !scoreboard.is_empty() {
             has_data = true;
-            scoreboard_data = Some(scoreboard.into_iter().map(|s| ScoreBoardItem {
-                course_id: s.course_id,
-                course_name: s.course_name,
-                course_code: s.course_code,
-                credits: s.credits,
-                score1: s.score1.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
-                score2: s.score2.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
-                score3: s.score3.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
-                score4: s.score4.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
-                score5: s.score5.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
-                score6: s.score6.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
-                letter_grade: s.letter_grade,
-                status: s.status,
-                semester: s.semester,
-                academic_year: s.academic_year,
-                metadata: s.metadata,
-            }).collect());
+            scoreboard_data = Some(
+                scoreboard
+                    .into_iter()
+                    .map(|s| ScoreBoardItem {
+                        course_id: s.course_id,
+                        course_name: s.course_name,
+                        course_code: s.course_code,
+                        credits: s.credits,
+                        score1: s
+                            .score1
+                            .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
+                        score2: s
+                            .score2
+                            .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
+                        score3: s
+                            .score3
+                            .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
+                        score4: s
+                            .score4
+                            .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
+                        score5: s
+                            .score5
+                            .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
+                        score6: s
+                            .score6
+                            .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
+                        letter_grade: s.letter_grade,
+                        status: s.status,
+                        semester: s.semester,
+                        academic_year: s.academic_year,
+                        metadata: s.metadata,
+                    })
+                    .collect(),
+            );
         }
 
         // Get semester summaries
-        let summaries = score_repo.get_semester_summaries_by_user_id(user_id).await.map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get semester summaries: {}", e),
-            )
-        })?;
+        let summaries = score_repo
+            .get_semester_summaries_by_user_id(user_id)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to get semester summaries: {}", e),
+                )
+            })?;
 
         if !summaries.is_empty() {
             has_data = true;
-            semester_summaries_data = Some(summaries.into_iter().map(|s| SemesterSummaryItem {
-                semester: s.semester,
-                academic_year: s.academic_year,
-                gpa: s.gpa.to_string().parse::<f64>().unwrap_or(0.0),
-                classification: s.classification,
-                total_credits: s.total_credits,
-                total_passed_credits: s.total_passed_credits,
-                metadata: s.metadata,
-            }).collect());
+            semester_summaries_data = Some(
+                summaries
+                    .into_iter()
+                    .map(|s| SemesterSummaryItem {
+                        semester: s.semester,
+                        academic_year: s.academic_year,
+                        gpa: s.gpa.to_string().parse::<f64>().unwrap_or(0.0),
+                        classification: s.classification,
+                        total_credits: s.total_credits,
+                        total_passed_credits: s.total_passed_credits,
+                        metadata: s.metadata,
+                    })
+                    .collect(),
+            );
         }
     }
 
@@ -159,7 +179,8 @@ pub async fn get_document_data(
     if is_certificate || is_diploma {
         let certificates = if is_diploma {
             // For diploma, get graduation certificate
-            score_repo.get_certificates_by_user_id_and_type(user_id, "Bằng tốt nghiệp")
+            score_repo
+                .get_certificates_by_user_id_and_type(user_id, "Bằng tốt nghiệp")
                 .await
                 .map_err(|e| {
                     (
@@ -169,26 +190,34 @@ pub async fn get_document_data(
                 })?
         } else {
             // For certificate, get all certificates or specific type
-            score_repo.get_certificates_by_user_id(user_id).await.map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Failed to get certificates: {}", e),
-                )
-            })?
+            score_repo
+                .get_certificates_by_user_id(user_id)
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to get certificates: {}", e),
+                    )
+                })?
         };
 
         if !certificates.is_empty() {
             has_data = true;
-            certificates_data = Some(certificates.into_iter().map(|(c, doc_type)| CertificateItem {
-                document_type_name: doc_type
-                    .as_ref()
-                    .map(|dt| dt.document_type_name.clone())
-                    .unwrap_or_else(|| "Unknown".to_string()),
-                issued_date: c.issued_date.to_string(),
-                expiry_date: c.expiry_date.map(|d| d.to_string()),
-                description: c.description,
-                metadata: c.metadata,
-            }).collect());
+            certificates_data = Some(
+                certificates
+                    .into_iter()
+                    .map(|(c, doc_type)| CertificateItem {
+                        document_type_name: doc_type
+                            .as_ref()
+                            .map(|dt| dt.document_type_name.clone())
+                            .unwrap_or_else(|| "Unknown".to_string()),
+                        issued_date: c.issued_date.to_string(),
+                        expiry_date: c.expiry_date.map(|d| d.to_string()),
+                        description: c.description,
+                        metadata: c.metadata,
+                    })
+                    .collect(),
+            );
         }
     }
 
@@ -197,7 +226,10 @@ pub async fn get_document_data(
             StatusCode::OK,
             Json(DocumentDataResponse {
                 has_data: false,
-                message: format!("Không có dữ liệu cho loại tài liệu: {}", payload.document_type_name),
+                message: format!(
+                    "Không có dữ liệu cho loại tài liệu: {}",
+                    payload.document_type_name
+                ),
                 data: Some(DocumentData {
                     user: Some(user_info),
                     scoreboard: None,
@@ -241,12 +273,15 @@ pub async fn mock_certificate(
 ) -> Result<(StatusCode, Json<MockCertificateResponse>), (StatusCode, String)> {
     // Find user by email
     let user_repo = UserRepository::new();
-    let user = user_repo.find_by_email(&payload.user_email).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to find user: {}", e),
-        )
-    })?;
+    let user = user_repo
+        .find_by_email(&payload.user_email)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to find user: {}", e),
+            )
+        })?;
 
     let user_id = user.ok_or_else(|| {
         (
@@ -254,31 +289,33 @@ pub async fn mock_certificate(
             format!("User with email {} not found", payload.user_email),
         )
     })?;
-    
+
     let user_id = user_id.user_id;
 
     // Parse dates
-    let issued_date = NaiveDate::parse_from_str(&payload.issued_date, "%Y-%m-%d")
-        .map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("Invalid issued_date format. Expected YYYY-MM-DD: {}", e),
-            )
-        })?;
+    let issued_date = NaiveDate::parse_from_str(&payload.issued_date, "%Y-%m-%d").map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid issued_date format. Expected YYYY-MM-DD: {}", e),
+        )
+    })?;
 
     let expiry_date = if let Some(expiry_date_str) = &payload.expiry_date {
-        Some(NaiveDate::parse_from_str(expiry_date_str, "%Y-%m-%d")
-            .map_err(|e| {
+        Some(
+            NaiveDate::parse_from_str(expiry_date_str, "%Y-%m-%d").map_err(|e| {
                 (
                     StatusCode::BAD_REQUEST,
                     format!("Invalid expiry_date format. Expected YYYY-MM-DD: {}", e),
                 )
-            })?)
+            })?,
+        )
     } else {
         None
     };
 
-    let db = DATABASE_CONNECTION.get().expect("DATABASE_CONNECTION not set");
+    let db = DATABASE_CONNECTION
+        .get()
+        .expect("DATABASE_CONNECTION not set");
     let document_type = document_type::Entity::find_by_id(payload.document_type_id)
         .one(db)
         .await
@@ -350,12 +387,15 @@ pub async fn mock_transcript(
 ) -> Result<(StatusCode, Json<MockTranscriptResponse>), (StatusCode, String)> {
     // Find user by email
     let user_repo = UserRepository::new();
-    let user = user_repo.find_by_email(&payload.user_email).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to find user: {}", e),
-        )
-    })?;
+    let user = user_repo
+        .find_by_email(&payload.user_email)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to find user: {}", e),
+            )
+        })?;
 
     let user = user.ok_or_else(|| {
         (
@@ -363,7 +403,7 @@ pub async fn mock_transcript(
             format!("User with email {} not found", payload.user_email),
         )
     })?;
-    
+
     let user_id = user.user_id;
 
     let score_repo = ScoreRepository::new();
@@ -387,5 +427,3 @@ pub async fn mock_transcript(
         }),
     ))
 }
-
-

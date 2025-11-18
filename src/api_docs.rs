@@ -116,7 +116,7 @@ use utoipa::openapi::security::SecurityScheme;
             crate::routes::requests::dto::RequestListResponse,
             crate::routes::requests::dto::RequestQueryParams,
             crate::entities::sea_orm_active_enums::RoleEnum,
-            crate::entities::sea_orm_active_enums::RequestStatusEnum,
+            crate::entities::sea_orm_active_enums::RequestStatus,
         ),
     ),
     modifiers(&SecurityModifier),

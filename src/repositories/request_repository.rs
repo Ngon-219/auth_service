@@ -1,12 +1,12 @@
-use crate::entities::{request, sea_orm_active_enums::RequestStatusEnum};
+use crate::entities::{request, sea_orm_active_enums::RequestStatus};
 use crate::static_service::DATABASE_CONNECTION;
 use anyhow::Result;
+use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set,
 };
 use uuid::Uuid;
-use chrono::Utc;
 
 pub struct RequestRepository;
 
@@ -22,17 +22,13 @@ impl RequestRepository {
     }
 
     /// Create a new request
-    pub async fn create(
-        &self,
-        user_id: Uuid,
-        content: String,
-    ) -> Result<request::Model> {
+    pub async fn create(&self, user_id: Uuid, content: String) -> Result<request::Model> {
         let db = self.get_connection();
 
         let request = request::ActiveModel {
             user_id: Set(user_id),
             content: Set(content),
-            status: Set(RequestStatusEnum::Pending),
+            status: Set(RequestStatus::Pending),
             scheduled_at: Set(None),
             ..Default::default()
         };
@@ -44,9 +40,7 @@ impl RequestRepository {
     /// Get request by ID
     pub async fn find_by_id(&self, request_id: Uuid) -> Result<Option<request::Model>> {
         let db = self.get_connection();
-        let request = request::Entity::find_by_id(request_id)
-            .one(db)
-            .await?;
+        let request = request::Entity::find_by_id(request_id).one(db).await?;
         Ok(request)
     }
 
@@ -66,7 +60,7 @@ impl RequestRepository {
         &self,
         page: u32,
         page_size: u32,
-        status_filter: Option<RequestStatusEnum>,
+        status_filter: Option<RequestStatus>,
     ) -> Result<(Vec<request::Model>, u64)> {
         let db = self.get_connection();
         let mut query = request::Entity::find();
@@ -105,7 +99,7 @@ impl RequestRepository {
     pub async fn update_status_and_schedule(
         &self,
         request_id: Uuid,
-        status: RequestStatusEnum,
+        status: RequestStatus,
         scheduled_at: Option<chrono::NaiveDateTime>,
     ) -> Result<request::Model> {
         let db = self.get_connection();
@@ -127,7 +121,7 @@ impl RequestRepository {
 
     /// Update request status to rejected
     pub async fn reject_request(&self, request_id: Uuid) -> Result<request::Model> {
-        self.update_status_and_schedule(request_id, RequestStatusEnum::Rejected, None).await
+        self.update_status_and_schedule(request_id, RequestStatus::Rejected, None)
+            .await
     }
 }
-

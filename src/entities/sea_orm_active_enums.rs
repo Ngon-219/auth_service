@@ -7,6 +7,19 @@ use utoipa::ToSchema;
 #[derive(
     Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, ToSchema,
 )]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "request_status")]
+pub enum RequestStatus {
+    #[sea_orm(string_value = "pending")]
+    Pending,
+    #[sea_orm(string_value = "scheduled")]
+    Scheduled,
+    #[sea_orm(string_value = "rejected")]
+    Rejected,
+}
+
+#[derive(
+    Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, ToSchema,
+)]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "role_enum")]
 pub enum RoleEnum {
     #[sea_orm(string_value = "admin")]
@@ -18,16 +31,15 @@ pub enum RoleEnum {
     #[sea_orm(string_value = "student")]
     Student,
 }
-
 #[derive(
     Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, ToSchema,
 )]
-#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "request_status")]
-pub enum RequestStatusEnum {
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "user_status")]
+pub enum UserStatus {
     #[sea_orm(string_value = "pending")]
     Pending,
-    #[sea_orm(string_value = "scheduled")]
-    Scheduled,
-    #[sea_orm(string_value = "rejected")]
-    Rejected,
+    #[sea_orm(string_value = "sync")]
+    Sync,
+    #[sea_orm(string_value = "failed")]
+    Failed,
 }

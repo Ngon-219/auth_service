@@ -47,6 +47,7 @@ impl PrimaryKeyTrait for PrimaryKey {
 
 #[derive(Copy, Clone, Debug, EnumIter)]
 pub enum Relation {
+    Certificate,
     Documents,
     User,
 }
@@ -68,12 +69,19 @@ impl ColumnTrait for Column {
 impl RelationTrait for Relation {
     fn def(&self) -> RelationDef {
         match self {
+            Self::Certificate => Entity::has_many(super::certificate::Entity).into(),
             Self::Documents => Entity::has_many(super::documents::Entity).into(),
             Self::User => Entity::belongs_to(super::user::Entity)
                 .from(Column::CreatedBy)
                 .to(super::user::Column::UserId)
                 .into(),
         }
+    }
+}
+
+impl Related<super::certificate::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Certificate.def()
     }
 }
 
