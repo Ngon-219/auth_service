@@ -1,5 +1,5 @@
 use crate::entities::sea_orm_active_enums::RoleEnum;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -181,4 +181,75 @@ fn default_page() -> usize {
 
 fn default_page_size() -> usize {
     20
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct CreateUserRequestBulk {
+    pub history_file_upload_id: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UserCsvColumn {
+    pub address: String,
+    pub cccd: String,
+    pub email: String,
+    pub first_name: String,
+    pub last_name: String,
+    #[serde(deserialize_with = "split_major_ids", serialize_with = "join_major_ids")]
+    pub major_ids: Vec<String>,
+    pub password: String,
+    pub phone_number: String,
+    pub role: String,
+}
+
+fn split_major_ids<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+    use std::fmt;
+
+    struct MajorIdsVisitor;
+
+    impl<'de> Visitor<'de> for MajorIdsVisitor {
+        type Value = Vec<String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a string or an array of strings")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            if value.is_empty() {
+                Ok(Vec::new())
+            } else {
+                Ok(value.split(';').map(|item| item.trim().to_string()).collect())
+            }
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: de::SeqAccess<'de>,
+        {
+            let mut vec = Vec::new();
+            while let Some(elem) = seq.next_element()? {
+                vec.push(elem);
+            }
+            Ok(vec)
+        }
+    }
+
+    deserializer.deserialize_any(MajorIdsVisitor)
+}
+
+fn join_major_ids<S>(ids: &Vec<String>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    if ids.is_empty() {
+        return serializer.serialize_str("");
+    }
+    serializer.serialize_str(&ids.join(";"))
 }

@@ -27,6 +27,11 @@ pub async fn main() -> anyhow::Result<()> {
         .await
         .ok();
 
+    tracing::info!("Creating register new user db channel...");
+    RabbitMQService::create_user_db_channel(rabbitmq_connection)
+        .await
+        .ok();
+
     tracing::info!("Creating register new manager channel...");
     RabbitMQService::create_register_new_manager_channel(rabbitmq_connection)
         .await
@@ -88,6 +93,13 @@ pub async fn main() -> anyhow::Result<()> {
         tracing::info!("[Spawn] Starting register batch consumer task...");
         if let Err(e) = RabbitMqConsumer::consume_register_students_batch().await {
             tracing::error!("Register students batch consumer error: {:?}", e);
+        }
+    });
+
+    let create_user_db = tokio::spawn(async {
+        tracing::info!("[Spawn] Starting create user db consumer task...");
+        if let Err(e) = RabbitMqConsumer::consumer_create_user_db().await {
+            tracing::error!("Create user db consumer error: {:?}", e);
         }
     });
 

@@ -1,18 +1,18 @@
 use axum::{
     Json, Router,
-    extract::{Multipart, Path, Query},
+    extract::{Path, Query},
     http::StatusCode,
     routing::{get, post},
 };
-use calamine::{DataType, Reader, Xlsx, open_workbook_from_rs};
 use chrono::Utc;
 use do_an_lib::structs::token_claims::UserRole;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
-use std::io::Cursor;
+use std::fs::File;
+use tokio::task;
 use uuid::Uuid;
 
 use super::dto::{
-    BulkUserError, BulkUserResponse, CreateUserRequest, ExcelUserRow, UpdateUserRequest,
+    BulkUserResponse, CreateUserRequest, CreateUserRequestBulk, UpdateUserRequest, UserCsvColumn,
     UserDetailResponse, UserListResponse, UserQueryParams, UserResponse,
 };
 use crate::blockchain::{BlockchainService, get_user_private_key};
@@ -25,8 +25,9 @@ use crate::rabbitmq_service::consumers::RABBITMQ_CONNECTION;
 use crate::rabbitmq_service::rabbitmq_service::RabbitMQService;
 use crate::rabbitmq_service::structs::{
     AssignRoleMessage, DeactivateStudentMessage, RegisterNewManagerMessage, RegisterNewUserMessage,
-    RegisterStudentsBatchMessage, RemoveManagerMessage,
+    RemoveManagerMessage,
 };
+use crate::repositories::file_upload_repository::FileUploadRepository;
 use crate::repositories::{UserRepository, WalletRepository, user_repository::UserUpdate};
 use crate::utils::encryption::encrypt_private_key;
 
@@ -261,300 +262,91 @@ pub async fn create_user(
 #[utoipa::path(
     post,
     path = "/api/v1/users/bulk",
-    request_body(content = String, content_type = "multipart/form-data"),
+    request_body = CreateUserRequestBulk,
     responses(
         (status = 201, description = "Bulk user creation completed", body = BulkUserResponse),
         (status = 400, description = "Bad request"),
         (status = 500, description = "Internal server error")
     ),
+    security(("bearer_auth" = [])),
     tag = "Users"
 )]
 pub async fn create_users_bulk(
-    mut multipart: Multipart,
-) -> Result<(StatusCode, Json<BulkUserResponse>), (StatusCode, String)> {
-    let user_repo = UserRepository::new();
-    let wallet_repo = WalletRepository::new();
-    let mut file_data: Option<Vec<u8>> = None;
-
-    // Extract file from multipart
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Failed to read multipart: {}", e),
-        )
-    })? {
-        let name = field.name().unwrap_or("").to_string();
-
-        if name == "file" {
-            let data = field.bytes().await.map_err(|e| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    format!("Failed to read file: {}", e),
-                )
-            })?;
-            file_data = Some(data.to_vec());
-            break;
-        }
-    }
-
-    let file_data =
-        file_data.ok_or_else(|| (StatusCode::BAD_REQUEST, "No file provided".to_string()))?;
-
-    // Parse Excel file
-    let cursor = Cursor::new(file_data);
-    let mut workbook: Xlsx<_> = open_workbook_from_rs(cursor).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Failed to open Excel file: {}", e),
-        )
-    })?;
-
-    let sheet_names = workbook.sheet_names().to_owned();
-    let first_sheet = sheet_names.first().ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            "Excel file has no sheets".to_string(),
-        )
-    })?;
-
-    let range = workbook.worksheet_range(first_sheet).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Failed to read sheet: {}", e),
-        )
-    })?;
-
-    let mut users_data: Vec<ExcelUserRow> = Vec::new();
-    let mut errors: Vec<BulkUserError> = Vec::new();
-
-    // Parse rows (skip header row)
-    for (idx, row) in range.rows().enumerate().skip(1) {
-        let row_num = idx + 1;
-
-        let parse_result: Result<ExcelUserRow, String> = (|| {
-            let get_cell = |col: usize| -> Result<String, String> {
-                row.get(col)
-                    .ok_or_else(|| format!("Missing column {}", col))?
-                    .as_string()
-                    .map(|s| s.to_string())
-                    .ok_or_else(|| format!("Invalid data in column {}", col))
-            };
-
-            let user_row = ExcelUserRow {
-                first_name: get_cell(0)?,
-                last_name: get_cell(1)?,
-                address: get_cell(2)?,
-                email: get_cell(3)?,
-                password: get_cell(4)?,
-                cccd: get_cell(5)?,
-                phone_number: get_cell(6)?,
-                role: get_cell(7)?,
-                student_code: row
-                    .get(8)
-                    .and_then(|cell| cell.as_string())
-                    .map(|s| s.to_string())
-                    .filter(|s| !s.is_empty()),
-            };
-
-            user_row.validate()?;
-            Ok(user_row)
-        })();
-
-        match parse_result {
-            Ok(user_row) => users_data.push(user_row),
-            Err(error) => {
-                errors.push(BulkUserError {
-                    row: row_num,
-                    email: row
-                        .get(3)
-                        .and_then(|c| c.as_string())
-                        .unwrap_or("unknown".to_string())
-                        .to_string(),
-                    error,
-                });
-            }
-        }
-    }
-
-    let total_records = users_data.len() + errors.len();
-    let mut successful = 0;
-
-    // Prepare data for batch blockchain registration
-    let mut student_addresses = Vec::new();
-    let mut student_codes = Vec::new();
-    let mut student_names = Vec::new();
-    let mut student_emails = Vec::new();
-
-    // Process each user
-    for user_data in users_data.iter() {
-        // Generate wallet
-        let (wallet_address, wallet_private_key) = match BlockchainService::generate_wallet() {
-            Ok(wallet) => wallet,
-            Err(e) => {
-                errors.push(BulkUserError {
-                    row: 0,
-                    email: user_data.email.clone(),
-                    error: format!("Failed to generate wallet: {}", e),
-                });
-                continue;
-            }
-        };
-
-        let user_id = Uuid::new_v4();
-        let wallet_id = Uuid::new_v4();
-
-        let hashed_password = match bcrypt::hash(&user_data.password, bcrypt::DEFAULT_COST) {
-            Ok(hash) => hash,
-            Err(e) => {
-                errors.push(BulkUserError {
-                    row: 0,
-                    email: user_data.email.clone(),
-                    error: format!("Failed to hash password: {}", e),
-                });
-                continue;
-            }
-        };
-
-        let role = match user_data.parse_role() {
-            Ok(r) => r,
-            Err(e) => {
-                errors.push(BulkUserError {
-                    row: 0,
-                    email: user_data.email.clone(),
-                    error: e,
-                });
-                continue;
-            }
-        };
-
-        // Validate student_code is required for students
-        if role == RoleEnum::Student {
-            if user_data.student_code.is_none()
-                || user_data.student_code.as_ref().unwrap().is_empty()
-            {
-                errors.push(BulkUserError {
-                    row: 0,
-                    email: user_data.email.clone(),
-                    error: "Student code is required for students".to_string(),
-                });
-                continue;
-            }
-        }
-
-        let encrypted_private_key =
-            match encrypt_private_key(&wallet_private_key, &APP_CONFIG.encryption_key) {
-                Ok(encrypted) => encrypted,
-                Err(e) => {
-                    errors.push(BulkUserError {
-                        row: 0,
-                        email: user_data.email.clone(),
-                        error: format!("Failed to encrypt private key: {}", e),
-                    });
-                    continue;
-                }
-            };
-
-        // Insert user into database
-        if let Err(e) = user_repo
-            .create(
-                user_id,
-                user_data.first_name.clone(),
-                user_data.last_name.clone(),
-                user_data.address.clone(),
-                user_data.email.clone(),
-                hashed_password,
-                user_data.cccd.clone(),
-                user_data.phone_number.clone(),
-                role.clone(),
-                false, // is_priority
-                user_data.student_code.clone(),
-            )
-            .await
-        {
-            errors.push(BulkUserError {
-                row: 0,
-                email: user_data.email.clone(),
-                error: format!("Failed to create user: {}", e),
-            });
-            continue;
-        }
-
-        if let Err(e) = wallet_repo
-            .create(
-                wallet_id,
-                user_id,
-                wallet_address.clone(),
-                encrypted_private_key,
-                APP_CONFIG.chain_type.clone(),
-                wallet_address.clone(),
-                "active".to_string(),
-                APP_CONFIG.chain_id.clone(),
-            )
-            .await
-        {
-            errors.push(BulkUserError {
-                row: 0,
-                email: user_data.email.clone(),
-                error: format!("Failed to create wallet: {}", e),
-            });
-            continue;
-        }
-
-        // Collect student data for batch registration
-        if role == RoleEnum::Student {
-            if let Some(student_code) = &user_data.student_code {
-                student_addresses.push(wallet_address.clone());
-                student_codes.push(student_code.clone());
-                student_names.push(format!("{} {}", user_data.first_name, user_data.last_name));
-                student_emails.push(user_data.email.clone());
-            }
-        }
-
-        successful += 1;
-    }
-
-    // Batch register students on blockchain (max 50 at a time)
-    if !student_addresses.is_empty() {
-        let rabbit_mq_conn = RABBITMQ_CONNECTION.get().ok_or_else(|| {
+    AuthClaims(_claims): AuthClaims,
+    Json(payload): Json<CreateUserRequestBulk>,
+) -> Result<(StatusCode, String), (StatusCode, String)> {
+    let file_history_repo = FileUploadRepository::new();
+    let file_upload = file_history_repo
+        .find_by_id(&payload.history_file_upload_id)
+        .await
+        .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "RabbitMQ connection not initialized".to_string(),
+                format!("Failed to get file infomation {e}"),
             )
         })?;
 
-        // Get admin private key for batch registration
-        let admin_private_key = APP_CONFIG.admin_private_key.clone();
+    let file_name = file_upload.file_name.clone();
 
-        for chunk in 0..(student_addresses.len() + 49) / 50 {
-            let start = chunk * 50;
-            let end = std::cmp::min(start + 50, student_addresses.len());
+    let result = task::spawn_blocking(move || {
+        let file_path = format!("./uploads/{}", file_name);
+        let file = File::open(file_path).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to open file: {}", e),
+            )
+        })?;
 
-            let batch_message = RegisterStudentsBatchMessage {
-                private_key: admin_private_key.clone(),
-                wallet_addresses: student_addresses[start..end].to_vec(),
-                student_codes: student_codes[start..end].to_vec(),
-                full_names: student_names[start..end].to_vec(),
-                emails: student_emails[start..end].to_vec(),
-            };
+        let mut rdr = csv::Reader::from_reader(file);
+        let mut users = Vec::new();
 
-            if let Err(e) =
-                RabbitMQService::publish_to_register_students_batch(rabbit_mq_conn, batch_message)
-                    .await
-            {
-                tracing::error!("Failed to publish batch register message: {}", e);
-                // Don't fail the entire operation, just log the error
-            }
+        for result in rdr.deserialize() {
+            let record: UserCsvColumn = result.map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to parse CSV: {}", e),
+                )
+            })?;
+            users.push(record);
         }
+        Ok::<Vec<UserCsvColumn>, (StatusCode, String)>(users)
+    })
+    .await;
+
+    match result {
+        Ok(inner_result) => match inner_result {
+            Ok(users) => {
+                let rabbitmq_conn = RABBITMQ_CONNECTION.get().ok_or_else(|| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "RabbitMQ connection not initialized".to_string(),
+                    )
+                })?;
+
+                for user in users {
+                    RabbitMQService::publish_to_create_user_db(rabbitmq_conn, user)
+                        .await
+                        .map_err(|e| {
+                            (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                format!("Failed to publish create user message: {}", e),
+                            )
+                        })?;
+                }
+
+                Ok((
+                    StatusCode::OK,
+                    "Publish batch user to msg queue success".to_string(),
+                ))
+            }
+            Err((status, msg)) => Err((status, msg)),
+        },
+
+        Err(join_error) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("System error: Task panicked or cancelled - {}", join_error),
+        )),
     }
-
-    let response = BulkUserResponse {
-        total_records,
-        successful,
-        failed: errors.len(),
-        errors,
-    };
-
-    Ok((StatusCode::CREATED, Json(response)))
 }
 
 /// Get all users with pagination and filtering  

@@ -1,20 +1,25 @@
 use crate::blockchain::BlockchainService;
 use crate::config::APP_CONFIG;
+use crate::entities::sea_orm_active_enums::RoleEnum;
 use crate::rabbitmq_service::structs::{
     ActivateStudentMessage, AssignRoleMessage, DeactivateStudentMessage, RegisterNewManagerMessage,
     RegisterNewUserMessage, RegisterStudentsBatchMessage, RemoveManagerMessage,
 };
 use crate::redis_service::redis_emitter::RedisEmitter;
-use crate::repositories::UserRepository;
-use anyhow::Context;
+use crate::repositories::{UserRepository, WalletRepository};
+use crate::routes::users::dto::UserCsvColumn;
+use crate::utils::encryption::encrypt_private_key;
+use anyhow::{Context, anyhow};
 use futures::StreamExt;
 use lapin::options::{BasicAckOptions, BasicConsumeOptions};
 use lapin::types::FieldTable;
 use lapin::{Connection, ConnectionProperties};
 use serde_json::json;
 use tokio::sync::OnceCell;
+use uuid::Uuid;
 
 pub const REGISTER_NEW_USER_CHANNEL: &str = "create::new::user";
+pub const CREATE_USER_DB: &str = "create::user::db";
 pub const REGISTER_NEW_MANAGER_CHANNEL: &str = "create:new:manager";
 pub const ASSIGN_ROLE_CHANNEL: &str = "blockchain::assign::role";
 pub const REMOVE_MANAGER_CHANNEL: &str = "blockchain::remove::manager";
@@ -832,6 +837,148 @@ impl RabbitMqConsumer {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    pub async fn consumer_create_user_db() -> Result<(), anyhow::Error> {
+        tracing::info!(
+            "Starting consumer for create user db queue: {}",
+            CREATE_USER_DB
+        );
+
+        let rabbit_conn = RABBITMQ_CONNECTION
+            .get()
+            .expect("Failed to connect to rabbitMQ");
+        let channel = rabbit_conn.create_channel().await.expect("created channel");
+
+        tracing::info!("Created RabbitMQ channel, starting to consume messages...");
+
+        let mut consumer = channel
+            .basic_consume(
+                CREATE_USER_DB,
+                "create_user_db",
+                BasicConsumeOptions::default(),
+                FieldTable::default(),
+            )
+            .await?;
+
+        tracing::info!("Consumer started successfully, waiting for messages...");
+
+        while let Some(delivery) = consumer.next().await {
+            tracing::debug!("Received message from queue");
+            let delivery = match delivery {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::error!("Failed to receive message rabbitMQ: {:?}", e);
+                    continue;
+                }
+            };
+
+            match std::str::from_utf8(&delivery.data) {
+                Ok(_payload) => {
+                    let deserialize_payload: UserCsvColumn =
+                        serde_json::from_slice::<UserCsvColumn>(&delivery.data)?;
+
+                    tracing::info!(
+                        "Processing register student message for email: {}",
+                        deserialize_payload.email,
+                    );
+
+                    let ack_options = BasicAckOptions::default();
+                    if let Err(e) = delivery.ack(ack_options).await {
+                        tracing::error!("Failed to acknowledge register new user message: {}", e);
+                    } else {
+                        tracing::debug!(
+                            "Message acknowledged, starting user create db..."
+                        );
+
+                        if let Err(err) =
+                            Self::create_user_from_csv_payload(deserialize_payload).await
+                        {
+                            tracing::error!("Failed to create user from CSV payload: {err:?}");
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to consumer message rabbitmq: {}", e);
+                    delivery.ack(BasicAckOptions::default()).await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl RabbitMqConsumer {
+    async fn create_user_from_csv_payload(payload: UserCsvColumn) -> anyhow::Result<()> {
+        let user_repo = UserRepository::new();
+        let wallet_repo = WalletRepository::new();
+
+        let hashed_password = bcrypt::hash(&payload.password, bcrypt::DEFAULT_COST)
+            .map_err(|e| anyhow!("Failed to hash password: {e}"))?;
+
+        let (wallet_address, wallet_private_key) =
+            BlockchainService::generate_wallet().context("Failed to generate wallet")?;
+
+        let encrypted_private_key =
+            encrypt_private_key(&wallet_private_key, &APP_CONFIG.encryption_key)
+                .map_err(|e| anyhow!("Failed to encrypt private key: {e}"))?;
+
+        let user_id = Uuid::new_v4();
+        let wallet_id = Uuid::new_v4();
+
+        let student_code = if payload.role.to_string() == "Student".to_string() {
+            let latest_student_code = UserRepository::get_latest_student_code()
+                .await
+                .unwrap_or_else(|_| "000000".into());
+            let student_code_i64 = latest_student_code.parse::<i64>().unwrap_or_default();
+            Some(format!("{:06}", student_code_i64 + 1))
+        } else {
+            None
+        };
+
+        let user_role = match payload.role.as_str() {
+            "Student" => RoleEnum::Student,
+            "Manager" => RoleEnum::Manager,
+            "Admin" => RoleEnum::Admin,
+            _ => {
+                tracing::error!("Invalid role: {}", payload.role);
+                return Err(anyhow!("Invalid role"));
+            }
+        };
+
+        user_repo
+            .create(
+                user_id,
+                payload.first_name.clone(),
+                payload.last_name.clone(),
+                payload.address.clone(),
+                payload.email.clone(),
+                hashed_password,
+                payload.cccd.clone(),
+                payload.phone_number.clone(),
+                user_role,
+                false,
+                student_code.clone(),
+            )
+            .await
+            .context("Failed to create user")?;
+
+        wallet_repo
+            .create(
+                wallet_id,
+                user_id,
+                wallet_address.clone(),
+                encrypted_private_key.clone(),
+                APP_CONFIG.chain_type.clone(),
+                wallet_address,
+                "active".to_string(),
+                APP_CONFIG.chain_id.clone(),
+            )
+            .await
+            .context("Failed to create wallet")?;
 
         Ok(())
     }

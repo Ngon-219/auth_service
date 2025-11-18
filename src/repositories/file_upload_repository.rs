@@ -82,4 +82,22 @@ impl FileUploadRepository {
 
         Ok(())
     }
+
+    pub async fn find_by_id(
+        &self,
+        id: &str,
+    ) -> Result<crate::entities::file_upload_history::Model, anyhow::Error> {
+        let db = self.get_connection();
+        let id = Uuid::parse_str(id)?;
+        let find_upload_model = crate::entities::file_upload_history::Entity::find()
+            .filter(crate::entities::file_upload_history::Column::FileUploadHistoryId.eq(id))
+            .one(db)
+            .await?;
+
+        if let Some(find_upload_model) = find_upload_model {
+            Ok(find_upload_model)
+        } else {
+            Err(anyhow::anyhow!("File not found"))
+        }
+    }
 }

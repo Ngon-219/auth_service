@@ -1,6 +1,6 @@
 use crate::config::APP_CONFIG;
 use crate::rabbitmq_service::consumers::{
-    ACTIVATE_STUDENT_CHANNEL, ASSIGN_ROLE_CHANNEL, DEACTIVATE_STUDENT_CHANNEL,
+    ACTIVATE_STUDENT_CHANNEL, ASSIGN_ROLE_CHANNEL, CREATE_USER_DB, DEACTIVATE_STUDENT_CHANNEL,
     REGISTER_NEW_MANAGER_CHANNEL, REGISTER_NEW_USER_CHANNEL, REGISTER_STUDENTS_BATCH_CHANNEL,
     REMOVE_MANAGER_CHANNEL,
 };
@@ -8,6 +8,7 @@ use crate::rabbitmq_service::structs::{
     ActivateStudentMessage, AssignRoleMessage, DeactivateStudentMessage, RegisterNewManagerMessage,
     RegisterNewUserMessage, RegisterStudentsBatchMessage, RemoveManagerMessage,
 };
+use crate::routes::users::dto::UserCsvColumn;
 use lapin::{BasicProperties, Connection, ConnectionProperties, options::*};
 use serde_json::json;
 
@@ -51,6 +52,24 @@ impl RabbitMQService {
         channel
             .queue_declare(
                 REGISTER_NEW_USER_CHANNEL,
+                QueueDeclareOptions::default(),
+                Default::default(),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create RabbitMQ queue: {}", e))?;
+
+        Ok(())
+    }
+
+    pub async fn create_user_db_channel(connection: &Connection) -> Result<(), anyhow::Error> {
+        let channel = connection
+            .create_channel()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create RabbitMQ channel: {}", e))?;
+
+        channel
+            .queue_declare(
+                CREATE_USER_DB,
                 QueueDeclareOptions::default(),
                 Default::default(),
             )
@@ -269,6 +288,27 @@ impl RabbitMQService {
             .basic_publish(
                 "",
                 REGISTER_STUDENTS_BATCH_CHANNEL,
+                BasicPublishOptions::default(),
+                serialize_msg.as_bytes(),
+                BasicProperties::default(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn publish_to_create_user_db(
+        connection: &Connection,
+        message: UserCsvColumn,
+    ) -> Result<(), anyhow::Error> {
+        let serialize_msg = serde_json::to_string(&message)?;
+
+        let channel = connection.create_channel().await?;
+
+        channel
+            .basic_publish(
+                "",
+                CREATE_USER_DB,
                 BasicPublishOptions::default(),
                 serialize_msg.as_bytes(),
                 BasicProperties::default(),
