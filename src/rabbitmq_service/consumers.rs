@@ -138,7 +138,7 @@ impl RabbitMqConsumer {
                                     deserialize_payload.file_upload_history_id.as_deref()
                                 {
                                     if let Err(progress_err) =
-                                        BlockchainRegistrationProgress::increment_progress(
+                                        BlockchainRegistrationProgress::increment_success(
                                             file_upload_history_id,
                                         )
                                         .await
@@ -176,7 +176,7 @@ impl RabbitMqConsumer {
                                     deserialize_payload.file_upload_history_id.as_deref()
                                 {
                                     if let Err(progress_err) =
-                                        BlockchainRegistrationProgress::increment_progress(
+                                        BlockchainRegistrationProgress::increment_failed(
                                             file_upload_history_id,
                                         )
                                         .await
@@ -191,22 +191,22 @@ impl RabbitMqConsumer {
 
                                 tracing::error!("Failed to register new student: {}", e);
                                 let user_repo = UserRepository::new();
-                                tracing::info!(
-                                    "Attempting to delete user with student_code: {} after blockchain registration failed",
-                                    deserialize_payload.student_code
-                                );
-                                if let Err(delete_err) = user_repo
-                                    .delete_by_student_code(&deserialize_payload.student_code)
+                                if let Err(status_err) = user_repo
+                                    .update_status_by_email(
+                                        &deserialize_payload.email,
+                                        UserStatus::Failed,
+                                    )
                                     .await
                                 {
                                     tracing::error!(
-                                        "Failed to delete user after blockchain error: {}",
-                                        delete_err
+                                        "Failed to update user status to Failed for {}: {}",
+                                        deserialize_payload.email,
+                                        status_err
                                     );
                                 } else {
                                     tracing::info!(
-                                        "Successfully deleted user with student_code: {} after blockchain registration failed",
-                                        deserialize_payload.student_code
+                                        "Set user status to Failed for {} after blockchain error",
+                                        deserialize_payload.email
                                     );
                                 }
 
@@ -945,23 +945,47 @@ impl RabbitMqConsumer {
                     } else {
                         tracing::debug!("Message acknowledged, starting user create db...");
 
-                        if let Err(err) =
-                            Self::create_user_from_csv_payload(&deserialize_payload).await
-                        {
-                            tracing::error!("Failed to create user from CSV payload: {err:?}");
-                        } else if let Some(file_name) = deserialize_payload.file_name.as_deref() {
-                            if let Some(row_number) = deserialize_payload.row_number {
-                                if let Err(progress_err) =
-                                    FileHandleTrackProgress::set_current_file_progress(
-                                        file_name, row_number,
-                                    )
-                                    .await
-                                {
-                                    tracing::error!(
-                                        "Failed to update file progress for {}: {}",
-                                        file_name,
-                                        progress_err
-                                    );
+                        match Self::create_user_from_csv_payload(&deserialize_payload).await {
+                            Ok(_) => {
+                                if let Some(file_name) = deserialize_payload.file_name.as_deref() {
+                                    if let Some(row_number) = deserialize_payload.row_number {
+                                        if let Err(progress_err) =
+                                            FileHandleTrackProgress::set_current_file_progress(
+                                                file_name, row_number,
+                                            )
+                                            .await
+                                        {
+                                            tracing::error!(
+                                                "Failed to update file progress for {}: {}",
+                                                file_name,
+                                                progress_err
+                                            );
+                                        }
+                                    }
+
+                                    if let Err(success_err) =
+                                        FileHandleTrackProgress::increment_success(file_name).await
+                                    {
+                                        tracing::error!(
+                                            "Failed to increment success counter for {}: {}",
+                                            file_name,
+                                            success_err
+                                        );
+                                    }
+                                }
+                            }
+                            Err(err) => {
+                                tracing::error!("Failed to create user from CSV payload: {err:?}");
+                                if let Some(file_name) = deserialize_payload.file_name.as_deref() {
+                                    if let Err(failed_err) =
+                                        FileHandleTrackProgress::increment_failed(file_name).await
+                                    {
+                                        tracing::error!(
+                                            "Failed to increment failed counter for {}: {}",
+                                            file_name,
+                                            failed_err
+                                        );
+                                    }
                                 }
                             }
                         }

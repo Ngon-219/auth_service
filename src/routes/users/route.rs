@@ -30,8 +30,8 @@ use crate::rabbitmq_service::structs::{
     RemoveManagerMessage,
 };
 use crate::redis_service::redis_service::{
-    helper_get_blockchain_registration_progress, BlockchainRegistrationProgress,
-    FileHandleTrackProgress,
+    helper_get_blockchain_registration_progress, helper_get_current_file_progress,
+    BlockchainRegistrationProgress, FileHandleTrackProgress,
 };
 use crate::repositories::file_upload_repository::FileUploadRepository;
 use crate::repositories::{UserRepository, WalletRepository, user_repository::UserUpdate};
@@ -44,6 +44,19 @@ pub struct BlockchainProgressResponse {
     pub current: u64,
     pub total: u64,
     pub percent: u64,
+    pub success: u64,
+    pub failed: u64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateUserProgressResponse {
+    pub file_upload_history_id: String,
+    pub current: u64,
+    pub total: u64,
+    pub percent: u64,
+    pub success: u64,
+    pub failed: u64,
 }
 
 pub fn create_route() -> Router {
@@ -57,6 +70,10 @@ pub fn create_route() -> Router {
         .route(
             "/api/v1/users/bulk/blockchain-progress/{file_upload_history_id}",
             get(get_blockchain_registration_progress),
+        )
+        .route(
+            "/api/v1/users/bulk/create-progress/{file_upload_history_id}",
+            get(get_create_user_progress),
         )
         .route(
             "/api/v1/users/{user_id}",
@@ -360,6 +377,16 @@ pub async fn create_users_bulk(
                     FileHandleTrackProgress::set_current_file_progress(&file_name, 0).await
                 {
                     tracing::error!("Failed to reset file progress for {}: {}", file_name, err);
+                }
+
+                if let Err(err) =
+                    FileHandleTrackProgress::reset_success_failed(&file_name).await
+                {
+                    tracing::error!(
+                        "Failed to reset success/failed counters for {}: {}",
+                        file_name,
+                        err
+                    );
                 }
 
                 for (index, mut user) in users.into_iter().enumerate() {
@@ -1033,6 +1060,18 @@ pub async fn activate_blockchain_registration(
         );
     }
 
+    if let Err(err) = BlockchainRegistrationProgress::reset_progress(
+        &payload.history_file_upload_id,
+    )
+    .await
+    {
+        tracing::error!(
+            "Failed to reset blockchain registration progress for {}: {}",
+            payload.history_file_upload_id,
+            err
+        );
+    }
+
     // Publish each student individually to blockchain registration queue
     let rabbitmq_conn = RABBITMQ_CONNECTION.get().ok_or_else(|| {
         (
@@ -1134,6 +1173,60 @@ pub async fn get_blockchain_registration_progress(
             current: progress.current,
             total: progress.total,
             percent: progress.percent,
+            success: progress.success,
+            failed: progress.failed,
+        }),
+    ))
+}
+
+/// Get create-user (DB) progress for a file upload
+#[utoipa::path(
+    get,
+    path = "/api/v1/users/bulk/create-progress/{file_upload_history_id}",
+    params(
+        ("file_upload_history_id" = String, Path, description = "File upload history ID")
+    ),
+    responses(
+        (status = 200, description = "Progress retrieved successfully", body = CreateUserProgressResponse),
+        (status = 404, description = "File upload history not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Users"
+)]
+pub async fn get_create_user_progress(
+    AuthClaims(_claims): AuthClaims,
+    Path(file_upload_history_id): Path<String>,
+) -> Result<(StatusCode, Json<CreateUserProgressResponse>), (StatusCode, String)> {
+    let file_repo = FileUploadRepository::new();
+    let file_record = file_repo
+        .find_by_id(&file_upload_history_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("Failed to find file upload record: {}", e),
+            )
+        })?;
+
+    let progress = helper_get_current_file_progress(&file_record.file_name)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to fetch create user progress: {}", e),
+            )
+        })?;
+
+    Ok((
+        StatusCode::OK,
+        Json(CreateUserProgressResponse {
+            file_upload_history_id,
+            current: progress.current,
+            total: progress.total,
+            percent: progress.percent,
+            success: progress.success,
+            failed: progress.failed,
         }),
     ))
 }

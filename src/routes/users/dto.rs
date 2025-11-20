@@ -203,9 +203,9 @@ pub struct UserCsvColumn {
     pub password: String,
     pub phone_number: String,
     pub role: String,
-    #[serde(skip_deserializing, default)]
+    #[serde(default)]
     pub file_name: Option<String>,
-    #[serde(skip_deserializing, default)]
+    #[serde(default)]
     pub row_number: Option<u64>,
 }
 
