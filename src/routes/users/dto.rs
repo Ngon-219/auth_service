@@ -195,11 +195,18 @@ pub struct UserCsvColumn {
     pub email: String,
     pub first_name: String,
     pub last_name: String,
-    #[serde(deserialize_with = "split_major_ids", serialize_with = "join_major_ids")]
+    #[serde(
+        deserialize_with = "split_major_ids",
+        serialize_with = "join_major_ids"
+    )]
     pub major_ids: Vec<String>,
     pub password: String,
     pub phone_number: String,
     pub role: String,
+    #[serde(skip_deserializing, default)]
+    pub file_name: Option<String>,
+    #[serde(skip_deserializing, default)]
+    pub row_number: Option<u64>,
 }
 
 fn split_major_ids<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
@@ -225,7 +232,10 @@ where
             if value.is_empty() {
                 Ok(Vec::new())
             } else {
-                Ok(value.split(';').map(|item| item.trim().to_string()).collect())
+                Ok(value
+                    .split(';')
+                    .map(|item| item.trim().to_string())
+                    .collect())
             }
         }
 

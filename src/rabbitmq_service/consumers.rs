@@ -1,11 +1,14 @@
 use crate::blockchain::BlockchainService;
 use crate::config::APP_CONFIG;
-use crate::entities::sea_orm_active_enums::RoleEnum;
+use crate::entities::sea_orm_active_enums::{RoleEnum, UserStatus};
 use crate::rabbitmq_service::structs::{
     ActivateStudentMessage, AssignRoleMessage, DeactivateStudentMessage, RegisterNewManagerMessage,
     RegisterNewUserMessage, RegisterStudentsBatchMessage, RemoveManagerMessage,
 };
 use crate::redis_service::redis_emitter::RedisEmitter;
+use crate::redis_service::redis_service::{
+    BlockchainRegistrationProgress, FileHandleTrackProgress,
+};
 use crate::repositories::{UserRepository, WalletRepository};
 use crate::routes::users::dto::UserCsvColumn;
 use crate::utils::encryption::encrypt_private_key;
@@ -115,6 +118,39 @@ impl RabbitMqConsumer {
 
                         match result {
                             Ok(_) => {
+                                let user_repo = UserRepository::new();
+                                if let Err(status_err) = user_repo
+                                    .update_status_by_email(
+                                        &deserialize_payload.email,
+                                        UserStatus::Sync,
+                                    )
+                                    .await
+                                {
+                                    tracing::error!(
+                                        "Failed to update user status to Sync for {}: {}",
+                                        deserialize_payload.email,
+                                        status_err
+                                    );
+                                }
+
+                                // Update progress if file_upload_history_id is present
+                                if let Some(file_upload_history_id) =
+                                    deserialize_payload.file_upload_history_id.as_deref()
+                                {
+                                    if let Err(progress_err) =
+                                        BlockchainRegistrationProgress::increment_progress(
+                                            file_upload_history_id,
+                                        )
+                                        .await
+                                    {
+                                        tracing::error!(
+                                            "Failed to update blockchain registration progress for {}: {}",
+                                            file_upload_history_id,
+                                            progress_err
+                                        );
+                                    }
+                                }
+
                                 let notification = json!({
                                     "status": "success",
                                     "student_code": deserialize_payload.student_code,
@@ -135,6 +171,24 @@ impl RabbitMqConsumer {
                                 );
                             }
                             Err(e) => {
+                                // Update progress even on failure (to track total processed)
+                                if let Some(file_upload_history_id) =
+                                    deserialize_payload.file_upload_history_id.as_deref()
+                                {
+                                    if let Err(progress_err) =
+                                        BlockchainRegistrationProgress::increment_progress(
+                                            file_upload_history_id,
+                                        )
+                                        .await
+                                    {
+                                        tracing::error!(
+                                            "Failed to update blockchain registration progress for {}: {}",
+                                            file_upload_history_id,
+                                            progress_err
+                                        );
+                                    }
+                                }
+
                                 tracing::error!("Failed to register new student: {}", e);
                                 let user_repo = UserRepository::new();
                                 tracing::info!(
@@ -889,14 +943,27 @@ impl RabbitMqConsumer {
                     if let Err(e) = delivery.ack(ack_options).await {
                         tracing::error!("Failed to acknowledge register new user message: {}", e);
                     } else {
-                        tracing::debug!(
-                            "Message acknowledged, starting user create db..."
-                        );
+                        tracing::debug!("Message acknowledged, starting user create db...");
 
                         if let Err(err) =
-                            Self::create_user_from_csv_payload(deserialize_payload).await
+                            Self::create_user_from_csv_payload(&deserialize_payload).await
                         {
                             tracing::error!("Failed to create user from CSV payload: {err:?}");
+                        } else if let Some(file_name) = deserialize_payload.file_name.as_deref() {
+                            if let Some(row_number) = deserialize_payload.row_number {
+                                if let Err(progress_err) =
+                                    FileHandleTrackProgress::set_current_file_progress(
+                                        file_name, row_number,
+                                    )
+                                    .await
+                                {
+                                    tracing::error!(
+                                        "Failed to update file progress for {}: {}",
+                                        file_name,
+                                        progress_err
+                                    );
+                                }
+                            }
                         }
                     }
                 }
@@ -912,7 +979,7 @@ impl RabbitMqConsumer {
 }
 
 impl RabbitMqConsumer {
-    async fn create_user_from_csv_payload(payload: UserCsvColumn) -> anyhow::Result<()> {
+    async fn create_user_from_csv_payload(payload: &UserCsvColumn) -> anyhow::Result<()> {
         let user_repo = UserRepository::new();
         let wallet_repo = WalletRepository::new();
 

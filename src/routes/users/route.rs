@@ -10,6 +10,8 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use std::fs::File;
 use tokio::task;
 use uuid::Uuid;
+use serde::Serialize;
+use utoipa::ToSchema;
 
 use super::dto::{
     BulkUserResponse, CreateUserRequest, CreateUserRequestBulk, UpdateUserRequest, UserCsvColumn,
@@ -27,14 +29,35 @@ use crate::rabbitmq_service::structs::{
     AssignRoleMessage, DeactivateStudentMessage, RegisterNewManagerMessage, RegisterNewUserMessage,
     RemoveManagerMessage,
 };
+use crate::redis_service::redis_service::{
+    helper_get_blockchain_registration_progress, BlockchainRegistrationProgress,
+    FileHandleTrackProgress,
+};
 use crate::repositories::file_upload_repository::FileUploadRepository;
 use crate::repositories::{UserRepository, WalletRepository, user_repository::UserUpdate};
 use crate::utils::encryption::encrypt_private_key;
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockchainProgressResponse {
+    pub file_upload_history_id: String,
+    pub current: u64,
+    pub total: u64,
+    pub percent: u64,
+}
 
 pub fn create_route() -> Router {
     Router::new()
         .route("/api/v1/users", post(create_user).get(get_all_users))
         .route("/api/v1/users/bulk", post(create_users_bulk))
+        .route(
+            "/api/v1/users/bulk/activate-blockchain",
+            post(activate_blockchain_registration),
+        )
+        .route(
+            "/api/v1/users/bulk/blockchain-progress/{file_upload_history_id}",
+            get(get_blockchain_registration_progress),
+        )
         .route(
             "/api/v1/users/{user_id}",
             get(get_user_by_id).put(update_user).delete(delete_user),
@@ -168,6 +191,7 @@ pub async fn create_user(
                 student_code: student_code.unwrap_or_default(),
                 full_name,
                 email: payload.email,
+                file_upload_history_id: None,
             };
             RabbitMQService::publish_to_register_new_user(rabbit_mq_conn, register_user_msg)
                 .await
@@ -287,9 +311,10 @@ pub async fn create_users_bulk(
         })?;
 
     let file_name = file_upload.file_name.clone();
+    let file_name_for_task = file_name.clone();
 
     let result = task::spawn_blocking(move || {
-        let file_path = format!("./uploads/{}", file_name);
+        let file_path = format!("./uploads/{}", file_name_for_task);
         let file = File::open(file_path).map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -323,7 +348,24 @@ pub async fn create_users_bulk(
                     )
                 })?;
 
-                for user in users {
+                let total_records = users.len() as u64;
+
+                if let Err(err) =
+                    FileHandleTrackProgress::set_total_file_handle(&file_name, total_records).await
+                {
+                    tracing::error!("Failed to set total file handle for {}: {}", file_name, err);
+                }
+
+                if let Err(err) =
+                    FileHandleTrackProgress::set_current_file_progress(&file_name, 0).await
+                {
+                    tracing::error!("Failed to reset file progress for {}: {}", file_name, err);
+                }
+
+                for (index, mut user) in users.into_iter().enumerate() {
+                    user.file_name = Some(file_name.clone());
+                    user.row_number = Some((index + 1) as u64);
+
                     RabbitMQService::publish_to_create_user_db(rabbitmq_conn, user)
                         .await
                         .map_err(|e| {
@@ -840,5 +882,258 @@ pub async fn delete_user(
             "message": "User deleted successfully",
             "user_id": user_id
         })),
+    ))
+}
+
+/// Activate blockchain registration for students from CSV file upload
+/// This route triggers blockchain registration for all students created from a specific CSV file
+#[utoipa::path(
+    post,
+    path = "/api/v1/users/bulk/activate-blockchain",
+    request_body = CreateUserRequestBulk,
+    responses(
+        (status = 200, description = "Blockchain registration activated successfully"),
+        (status = 400, description = "Bad request - no students found or invalid file"),
+        (status = 403, description = "Forbidden - Admin/Manager only"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Users"
+)]
+pub async fn activate_blockchain_registration(
+    AuthClaims(claims): AuthClaims,
+    Json(payload): Json<CreateUserRequestBulk>,
+) -> Result<(StatusCode, String), (StatusCode, String)> {
+    // Permission check: Admin or Manager only
+    if claims.role != UserRole::ADMIN && claims.role != UserRole::MANAGER {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Only admin or manager can activate blockchain registration".to_string(),
+        ));
+    }
+
+    let file_history_repo = FileUploadRepository::new();
+    let file_upload = file_history_repo
+        .find_by_id(&payload.history_file_upload_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get file information: {}", e),
+            )
+        })?;
+
+    let user_repo = UserRepository::new();
+    let user_id = Uuid::parse_str(&claims.user_id).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Invalid user_id: {}", e),
+        )
+    })?;
+
+    // Read CSV file to get list of emails
+    let file_name = file_upload.file_name.clone();
+    let file_name_for_task = file_name.clone();
+
+    let csv_emails = task::spawn_blocking(move || {
+        let file_path = format!("./uploads/{}", file_name_for_task);
+        let file = File::open(file_path).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to open file: {}", e),
+            )
+        })?;
+
+        let mut rdr = csv::Reader::from_reader(file);
+        let mut emails = Vec::new();
+
+        for result in rdr.deserialize() {
+            let record: UserCsvColumn = result.map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to parse CSV: {}", e),
+                )
+            })?;
+            // Only include students
+            if record.role.to_lowercase() == "student" {
+                emails.push(record.email);
+            }
+        }
+        Ok::<Vec<String>, (StatusCode, String)>(emails)
+    })
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to read CSV file: {}", e),
+        )
+    })?;
+
+    let emails = csv_emails.map_err(|(status, msg)| (status, msg))?;
+
+    if emails.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "No students found in CSV file".to_string(),
+        ));
+    }
+
+    // Query students by emails from the CSV file
+    let students_with_wallets = user_repo
+        .find_students_by_emails(emails)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to find students: {}", e),
+            )
+        })?;
+
+    if students_with_wallets.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "No students found for this file upload. Make sure students were created successfully first.".to_string(),
+        ));
+    }
+
+    // Filter only students (should already be filtered, but double-check)
+    let students: Vec<_> = students_with_wallets
+        .into_iter()
+        .filter(|(user, _)| user.role == RoleEnum::Student)
+        .collect();
+
+    if students.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "No students found for blockchain registration".to_string(),
+        ));
+    }
+
+    // Get private key of the user (admin/manager) who will sign the transaction
+    let db = user_repo.get_connection();
+    let private_key = get_user_private_key(db, &user_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get private key: {}", e),
+        )
+    })?;
+
+    // Set total for progress tracking
+    let total_students = students.len() as u64;
+    if let Err(err) = BlockchainRegistrationProgress::set_total(
+        &payload.history_file_upload_id,
+        total_students,
+    )
+    .await
+    {
+        tracing::error!(
+            "Failed to set total blockchain registration for {}: {}",
+            payload.history_file_upload_id,
+            err
+        );
+    }
+
+    // Publish each student individually to blockchain registration queue
+    let rabbitmq_conn = RABBITMQ_CONNECTION.get().ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "RabbitMQ connection not initialized".to_string(),
+        )
+    })?;
+
+    let mut success_count = 0;
+    let mut failed_count = 0;
+
+    for (user, wallet) in students.iter() {
+        let student_code = user
+            .student_code
+            .clone()
+            .unwrap_or_else(|| "".to_string());
+        let full_name = format!("{} {}", user.first_name, user.last_name);
+
+        let message = RegisterNewUserMessage {
+            private_key: private_key.clone(),
+            wallet_address: wallet.address.clone(),
+            student_code: student_code.clone(),
+            full_name: full_name.clone(),
+            email: user.email.clone(),
+            file_upload_history_id: Some(payload.history_file_upload_id.clone()),
+        };
+
+        match RabbitMQService::publish_to_register_new_user(rabbitmq_conn, message).await {
+            Ok(_) => {
+                success_count += 1;
+                tracing::info!(
+                    "Published blockchain registration message for student: {} ({})",
+                    student_code,
+                    user.email
+                );
+            }
+            Err(e) => {
+                failed_count += 1;
+                tracing::error!(
+                    "Failed to publish blockchain registration message for student {} ({}): {}",
+                    student_code,
+                    user.email,
+                    e
+                );
+            }
+        }
+    }
+
+    if failed_count > 0 {
+        return Err((
+            StatusCode::PARTIAL_CONTENT,
+            format!(
+                "Blockchain registration activated for {} students, {} failed",
+                success_count, failed_count
+            ),
+        ));
+    }
+
+    Ok((
+        StatusCode::OK,
+        format!(
+            "Blockchain registration activated for {} students",
+            success_count
+        ),
+    ))
+}
+
+/// Get blockchain registration progress for a file upload
+#[utoipa::path(
+    get,
+    path = "/api/v1/users/bulk/blockchain-progress/{file_upload_history_id}",
+    params(
+        ("file_upload_history_id" = String, Path, description = "File upload history ID")
+    ),
+    responses(
+        (status = 200, description = "Progress retrieved successfully", body = BlockchainProgressResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Users"
+)]
+pub async fn get_blockchain_registration_progress(
+    AuthClaims(_claims): AuthClaims,
+    Path(file_upload_history_id): Path<String>,
+) -> Result<(StatusCode, Json<BlockchainProgressResponse>), (StatusCode, String)> {
+    let progress = helper_get_blockchain_registration_progress(&file_upload_history_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to fetch blockchain registration progress: {}", e),
+            )
+        })?;
+
+    Ok((
+        StatusCode::OK,
+        Json(BlockchainProgressResponse {
+            file_upload_history_id,
+            current: progress.current,
+            total: progress.total,
+            percent: progress.percent,
+        }),
     ))
 }

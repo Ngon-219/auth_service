@@ -1,6 +1,6 @@
 use crate::config::{
-    APP_CONFIG, JWT_EXPRIED_TIME, MFA_CODE_REUSE_TTL_SECONDS, MFA_LOCK_DURATION_SECONDS,
-    MFA_MAX_FAIL_ATTEMPTS,
+    APP_CONFIG, FILE_TRACKER_EXPRIED_TIME, JWT_EXPRIED_TIME, MFA_CODE_REUSE_TTL_SECONDS,
+    MFA_LOCK_DURATION_SECONDS, MFA_MAX_FAIL_ATTEMPTS,
 };
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -167,4 +167,170 @@ impl JwtBlacklist {
         let exists: bool = redis.exists(&key).await?;
         Ok(exists)
     }
+}
+
+pub struct FileHandleTrackProgress;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileProgress {
+    pub total: u64,
+    pub current: u64,
+    pub percent: u64,
+}
+
+impl FileHandleTrackProgress {
+    pub async fn set_total_file_handle(file_name: &str, total: u64) -> Result<()> {
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
+
+        let key = format!("file_handle_tracker:{}", file_name);
+        let _: () = redis
+            .set_ex(&key, total, FILE_TRACKER_EXPRIED_TIME as u64)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn set_current_file_progress(file_name: &str, current: u64) -> Result<()> {
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
+
+        let key = format!("file_handle_progress:{}", file_name);
+
+        if current == 0 {
+            let _: () = redis
+                .set_ex(&key, 0u64, FILE_TRACKER_EXPRIED_TIME as u64)
+                .await?;
+            return Ok(());
+        }
+
+        let existing: Option<u64> = redis
+            .get(&key)
+            .await
+            .context("Failed to read current file progress from Redis")?;
+        let next_value = existing.map(|value| value.max(current)).unwrap_or(current);
+
+        let _: () = redis
+            .set_ex(&key, next_value, FILE_TRACKER_EXPRIED_TIME as u64)
+            .await?;
+
+        Ok(())
+    }
+}
+
+pub async fn helper_get_current_file_progress(file_name: &str) -> Result<FileProgress> {
+    let mut redis = get_redis()
+        .await
+        .context("Failed to get Redis connection")?;
+
+    let key_total_file_handle = format!("file_handle_tracker:{}", file_name);
+    let key_current_file_handle = format!("file_handle_progress:{}", file_name);
+
+    let total_file_handle: Option<u64> = redis
+        .get(&key_total_file_handle)
+        .await
+        .context("Failed to get total file handle from Redis")?;
+
+    let current_file_handle: Option<u64> = redis
+        .get(&key_current_file_handle)
+        .await
+        .context("Failed to get current file handle from Redis")?;
+
+    let total = total_file_handle.unwrap_or(0);
+    let mut current = current_file_handle.unwrap_or(0);
+    if total > 0 && current > total {
+        current = total;
+    }
+
+    let percent = if total == 0 {
+        0
+    } else {
+        current.saturating_mul(100).checked_div(total).unwrap_or(0)
+    };
+
+    Ok(FileProgress {
+        total,
+        current,
+        percent,
+    })
+}
+
+pub struct BlockchainRegistrationProgress;
+
+impl BlockchainRegistrationProgress {
+    pub async fn set_total(
+        file_upload_history_id: &str,
+        total: u64,
+    ) -> Result<()> {
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
+
+        let key = format!("blockchain_registration_tracker:{}", file_upload_history_id);
+        let _: () = redis
+            .set_ex(&key, total, FILE_TRACKER_EXPRIED_TIME as u64)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn increment_progress(
+        file_upload_history_id: &str,
+    ) -> Result<()> {
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
+
+        let key = format!("blockchain_registration_progress:{}", file_upload_history_id);
+
+        let current: Option<u64> = redis.get(&key).await?;
+        let next_value = current.map(|v| v + 1).unwrap_or(1);
+
+        let _: () = redis
+            .set_ex(&key, next_value, FILE_TRACKER_EXPRIED_TIME as u64)
+            .await?;
+
+        Ok(())
+    }
+}
+
+pub async fn helper_get_blockchain_registration_progress(
+    file_upload_history_id: &str,
+) -> Result<FileProgress> {
+    let mut redis = get_redis()
+        .await
+        .context("Failed to get Redis connection")?;
+
+    let key_total = format!("blockchain_registration_tracker:{}", file_upload_history_id);
+    let key_current = format!("blockchain_registration_progress:{}", file_upload_history_id);
+
+    let total: Option<u64> = redis
+        .get(&key_total)
+        .await
+        .context("Failed to get total blockchain registration from Redis")?;
+
+    let current: Option<u64> = redis
+        .get(&key_current)
+        .await
+        .context("Failed to get current blockchain registration from Redis")?;
+
+    let total = total.unwrap_or(0);
+    let mut current = current.unwrap_or(0);
+    if total > 0 && current > total {
+        current = total;
+    }
+
+    let percent = if total == 0 {
+        0
+    } else {
+        current.saturating_mul(100).checked_div(total).unwrap_or(0)
+    };
+
+    Ok(FileProgress {
+        total,
+        current,
+        percent,
+    })
 }

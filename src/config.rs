@@ -9,6 +9,8 @@ pub const MFA_CODE_REUSE_TTL_SECONDS: u64 = 120; // 2 minutes
 pub const MFA_LOCK_DURATION_SECONDS: u64 = 900; // 15 minutes
 pub const JWT_EXPRIED_TIME: i64 = 86400i64;
 
+pub const FILE_TRACKER_EXPRIED_TIME: i64 = 86400i64;
+
 pub static APP_CONFIG: Lazy<Config> = Lazy::new(Config::parse);
 
 #[derive(Debug, Parser, Clone)]

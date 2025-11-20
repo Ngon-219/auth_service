@@ -1,4 +1,4 @@
-use crate::entities::sea_orm_active_enums::RoleEnum;
+use crate::entities::sea_orm_active_enums::{RoleEnum, UserStatus};
 use crate::entities::{user, user_major, wallet};
 use crate::static_service::DATABASE_CONNECTION;
 use anyhow::Result;
@@ -298,6 +298,61 @@ impl UserRepository {
         }
 
         Err(anyhow::anyhow!("User not found"))
+    }
+
+    /// Get students by their email addresses
+    /// This is used to identify students created from a specific CSV file upload
+    pub async fn find_students_by_emails(
+        &self,
+        emails: Vec<String>,
+    ) -> Result<Vec<(user::Model, wallet::Model)>> {
+        let db = self.get_connection();
+
+        if emails.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Query students by emails
+        let students = user::Entity::find()
+            .filter(user::Column::DeletedAt.is_null())
+            .filter(user::Column::Role.eq(RoleEnum::Student))
+            .filter(user::Column::Email.is_in(emails))
+            .all(db)
+            .await?;
+
+        let mut result = Vec::new();
+        for student in students {
+            let wallet_info = wallet::Entity::find()
+                .filter(wallet::Column::UserId.eq(student.user_id))
+                .one(db)
+                .await?;
+
+            if let Some(wallet) = wallet_info {
+                result.push((student, wallet));
+            }
+        }
+
+        Ok(result)
+    }
+
+    pub async fn update_status_by_email(
+        &self,
+        email: &str,
+        status: UserStatus,
+    ) -> Result<user::Model> {
+        let db = self.get_connection();
+        let user = user::Entity::find()
+            .filter(user::Column::Email.eq(email))
+            .one(db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("User not found"))?;
+
+        let mut active_user: user::ActiveModel = user.into();
+        active_user.status = Set(status);
+        active_user.update_at = Set(chrono::Utc::now().naive_utc());
+
+        let result = active_user.update(db).await?;
+        Ok(result)
     }
 }
 

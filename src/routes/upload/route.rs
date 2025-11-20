@@ -1,10 +1,24 @@
 use crate::extractor::AuthClaims;
+use crate::redis_service::redis_service::helper_get_current_file_progress;
+use crate::repositories::file_upload_repository::FileUploadRepository;
 use crate::utils::upload::upload_chunk;
-use axum::{Router, extract::Multipart, response::IntoResponse, routing::post};
+use axum::{
+    Json, Router,
+    extract::{Multipart, Path},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{get, post},
+};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 pub fn create_route() -> Router {
-    Router::new().route("/api/v1/upload/chunk", post(upload_file_chunk))
+    Router::new()
+        .route("/api/v1/upload/chunk", post(upload_file_chunk))
+        .route(
+            "/api/v1/upload/progress/{file_upload_history_id}",
+            get(get_upload_progress),
+        )
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, ToSchema)]
@@ -20,6 +34,15 @@ pub struct UploadChunkResponse {
     pub total_chunks: usize,
     #[schema(example = false)]
     pub complete: bool,
+}
+
+#[derive(Debug, serde::Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadProgressResponse {
+    pub file_upload_history_id: Uuid,
+    pub current: u64,
+    pub total: u64,
+    pub percent: u64,
 }
 
 #[utoipa::path(
@@ -38,6 +61,54 @@ pub async fn upload_file_chunk(
     multipart: Multipart,
 ) -> impl IntoResponse {
     upload_chunk(multipart, &claims.user_id).await
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/upload/progress/{file_upload_history_id}",
+    params(
+        ("file_upload_history_id" = Uuid, Path, description = "File upload history ID")
+    ),
+    responses(
+        (status = 200, description = "Progress retrieved successfully", body = UploadProgressResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Upload"
+)]
+pub async fn get_upload_progress(
+    AuthClaims(_claims): AuthClaims,
+    Path(file_upload_history_id): Path<Uuid>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let file_repo = FileUploadRepository::new();
+    let file_record = file_repo
+        .find_by_id(&file_upload_history_id.to_string())
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to find file upload record: {}", e),
+            )
+        })?;
+
+    let progress = helper_get_current_file_progress(&file_record.file_name)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to fetch progress: {}", e),
+            )
+        })?;
+
+    Ok((
+        StatusCode::OK,
+        Json(UploadProgressResponse {
+            file_upload_history_id,
+            current: progress.current,
+            total: progress.total,
+            percent: progress.percent,
+        }),
+    ))
 }
 
 // fn is_csv_extension(filename: &str) -> bool {

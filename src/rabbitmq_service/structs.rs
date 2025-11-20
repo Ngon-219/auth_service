@@ -7,6 +7,8 @@ pub struct RegisterNewUserMessage {
     pub student_code: String,
     pub full_name: String,
     pub email: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_upload_history_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
