@@ -62,4 +62,7 @@ pub struct Config {
 
     #[clap(long, env, default_value = "local")]
     pub app_env: String,
+
+    #[clap(long, env, default_value = "*")]
+    pub cors_allowed_origins: String,
 }

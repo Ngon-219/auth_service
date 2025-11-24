@@ -8,7 +8,12 @@ use axum::middleware;
 use http::header;
 use std::sync::Arc;
 use tower::ServiceBuilder;
-use tower_http::{ServiceBuilderExt, propagate_header::PropagateHeaderLayer};
+use tower_http::{
+    cors::{AllowOrigin, Any, CorsLayer},
+    propagate_header::PropagateHeaderLayer,
+    ServiceBuilderExt,
+};
+use std::collections::HashSet;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -43,8 +48,54 @@ pub async fn create_app() -> anyhow::Result<Router> {
     let router = router.layer(middleware::from_fn(http_logger));
     eprintln!("✅ HTTP logger middleware applied successfully!");
 
+    // Configure CORS
+    // Common allowed headers and methods
+    let allowed_headers = [
+        header::CONTENT_TYPE,
+        header::AUTHORIZATION,
+        header::ACCEPT,
+        header::ACCEPT_LANGUAGE,
+    ];
+    
+    let allowed_methods = [
+        http::Method::GET,
+        http::Method::POST,
+        http::Method::PUT,
+        http::Method::DELETE,
+        http::Method::PATCH,
+        http::Method::OPTIONS,
+    ];
+
+    let cors_layer = if APP_CONFIG.cors_allowed_origins == "*" {
+        // When allowing all origins (*), we cannot use credentials (CORS spec limitation)
+        // If you need credentials, specify origins explicitly instead of using *
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(allowed_methods)
+            .allow_headers(allowed_headers)
+            .allow_credentials(false)
+    } else {
+        let allowed_origins: HashSet<String> = APP_CONFIG
+            .cors_allowed_origins
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect();
+
+        let origins: Vec<http::HeaderValue> = allowed_origins
+            .iter()
+            .filter_map(|origin| origin.parse().ok())
+            .collect();
+
+        CorsLayer::new()
+            .allow_origin(AllowOrigin::list(origins))
+            .allow_methods(allowed_methods)
+            .allow_headers(allowed_headers)
+            .allow_credentials(true)
+    };
+
     // Apply Tower middleware stack
     let middleware = ServiceBuilder::new()
+        .layer(cors_layer)
         .layer(PropagateHeaderLayer::new(header::HeaderName::from_static(
             "x-request-id",
         )))

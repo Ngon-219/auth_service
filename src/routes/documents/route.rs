@@ -1,21 +1,65 @@
 use super::dto::{
     CertificateItem, DocumentData, DocumentDataRequest, DocumentDataResponse,
-    MockCertificateRequest, MockCertificateResponse, MockTranscriptRequest, MockTranscriptResponse,
-    ScoreBoardItem, SemesterSummaryItem, UserInfo,
+    DocumentTypeResponse, MockCertificateRequest, MockCertificateResponse, MockTranscriptRequest,
+    MockTranscriptResponse, ScoreBoardItem, SemesterSummaryItem, UserInfo,
 };
 use crate::entities::{document_type, sea_orm_active_enums::RoleEnum};
 use crate::extractor::AuthClaims;
 use crate::repositories::{ScoreRepository, UserRepository};
 use crate::static_service::DATABASE_CONNECTION;
-use axum::{Json, Router, http::StatusCode, routing::post};
+use axum::{http::StatusCode, routing::get, routing::post, Json, Router};
 use chrono::NaiveDate;
 use sea_orm::EntityTrait;
 
 pub fn create_route() -> Router {
     Router::new()
         .route("/api/v1/documents/data", post(get_document_data))
+        .route("/api/v1/documents/types", get(get_document_types))
         .route("/api/v1/documents/mock/certificate", post(mock_certificate))
         .route("/api/v1/documents/mock/transcript", post(mock_transcript))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/documents/types",
+    responses(
+        (status = 200, description = "List of document types", body = [DocumentTypeResponse]),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Documents"
+)]
+pub async fn get_document_types(
+    AuthClaims(_auth_claims): AuthClaims,
+) -> Result<(StatusCode, Json<Vec<DocumentTypeResponse>>), (StatusCode, String)> {
+    let db = DATABASE_CONNECTION
+        .get()
+        .expect("DATABASE_CONNECTION not set");
+
+    let types = document_type::Entity::find()
+        .all(db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to load document types: {}", e),
+            )
+        })?;
+
+    let response = types
+        .into_iter()
+        .map(|doc_type| DocumentTypeResponse {
+            document_type_id: doc_type.document_type_id,
+            document_type_name: doc_type.document_type_name,
+            description: doc_type.description,
+            template_pdf: doc_type.template_pdf,
+            created_at: doc_type.created_at,
+            updated_at: doc_type.updated_at,
+            created_by: doc_type.created_by,
+        })
+        .collect();
+
+    Ok((StatusCode::OK, Json(response)))
 }
 
 #[utoipa::path(

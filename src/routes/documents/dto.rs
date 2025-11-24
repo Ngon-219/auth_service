@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -119,4 +120,15 @@ pub struct MockTranscriptResponse {
     pub message: String,
     pub scoreboard_count: u32,
     pub semester_summaries_count: u32,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DocumentTypeResponse {
+    pub document_type_id: Uuid,
+    pub document_type_name: String,
+    pub description: Option<String>,
+    pub template_pdf: Option<String>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+    pub created_by: Option<Uuid>,
 }
