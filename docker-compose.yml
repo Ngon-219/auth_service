@@ -42,8 +42,33 @@ services:
       timeout: 5s
       retries: 5
 
+  # OPTION 1: RedisInsight (Recommended - Official Redis GUI)
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: redisinsight
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight_data:/data
+    depends_on:
+      - redis
+
+  # OPTION 2: Redis Commander (Lightweight alternative)
+  # Uncomment if you prefer this instead of RedisInsight
+  # redis-commander:
+  #   image: rediscommander/redis-commander:latest
+  #   container_name: redis_commander
+  #   restart: unless-stopped
+  #   environment:
+  #     - REDIS_HOSTS=local:redis:6379
+  #   ports:
+  #     - "8081:8081"
+  #   depends_on:
+  #     - redis
+
 volumes:
   redis_data:
   postgres_data:
   rabbitmq-data:
     driver: local
+  redisinsight_data:
