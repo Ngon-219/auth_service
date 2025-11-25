@@ -164,7 +164,7 @@ impl RabbitMqConsumer {
                                 .to_string();
 
                                 RedisEmitter::emit_to_rooom(
-                                    &format!("user:{}", deserialize_payload.email),
+                                    &format!("user:{}", deserialize_payload.creator_user_id),
                                     &notification,
                                 )
                                 .await;
@@ -224,7 +224,7 @@ impl RabbitMqConsumer {
                                 .to_string();
 
                                 RedisEmitter::emit_to_rooom(
-                                    &format!("user:{}", deserialize_payload.email),
+                                    &format!("user:{}", deserialize_payload.creator_user_id),
                                     &notification,
                                 )
                                 .await;
@@ -318,7 +318,7 @@ impl RabbitMqConsumer {
                                 .to_string();
 
                                 RedisEmitter::emit_to_rooom(
-                                    &format!("user:{}", deserialize_payload.email),
+                                    &format!("user:{}", deserialize_payload.creator_user_id),
                                     &notification,
                                 )
                                 .await;
@@ -358,7 +358,7 @@ impl RabbitMqConsumer {
                                     .to_string();
 
                                 RedisEmitter::emit_to_rooom(
-                                    &format!("user:{}", deserialize_payload.email),
+                                    &format!("user:{}", deserialize_payload.creator_user_id),
                                     &notification,
                                 )
                                 .await;
@@ -444,7 +444,7 @@ impl RabbitMqConsumer {
                                 .to_string();
 
                                 RedisEmitter::emit_to_rooom(
-                                    &format!("user:{}", payload.email),
+                                    &format!("user:{}", payload.creator_user_id),
                                     &notification,
                                 )
                                 .await;
@@ -466,7 +466,7 @@ impl RabbitMqConsumer {
                                 .to_string();
 
                                 RedisEmitter::emit_to_rooom(
-                                    &format!("user:{}", payload.email),
+                                    &format!("user:{}", payload.creator_user_id),
                                     &notification,
                                 )
                                 .await;
@@ -544,7 +544,7 @@ impl RabbitMqConsumer {
                                 .to_string();
 
                                 RedisEmitter::emit_to_rooom(
-                                    &format!("user:{}", payload.email),
+                                    &format!("user:{}", payload.creator_user_id),
                                     &notification,
                                 )
                                 .await;
@@ -565,7 +565,7 @@ impl RabbitMqConsumer {
                                 .to_string();
 
                                 RedisEmitter::emit_to_rooom(
-                                    &format!("user:{}", payload.email),
+                                    &format!("user:{}", payload.creator_user_id),
                                     &notification,
                                 )
                                 .await;
@@ -643,7 +643,7 @@ impl RabbitMqConsumer {
                                 .to_string();
 
                                 RedisEmitter::emit_to_rooom(
-                                    &format!("user:{}", payload.email),
+                                    &format!("user:{}", payload.creator_user_id),
                                     &notification,
                                 )
                                 .await;
@@ -664,7 +664,7 @@ impl RabbitMqConsumer {
                                 .to_string();
 
                                 RedisEmitter::emit_to_rooom(
-                                    &format!("user:{}", payload.email),
+                                    &format!("user:{}", payload.creator_user_id),
                                     &notification,
                                 )
                                 .await;
@@ -742,7 +742,7 @@ impl RabbitMqConsumer {
                                 .to_string();
 
                                 RedisEmitter::emit_to_rooom(
-                                    &format!("user:{}", payload.email),
+                                    &format!("user:{}", payload.creator_user_id),
                                     &notification,
                                 )
                                 .await;
@@ -763,7 +763,7 @@ impl RabbitMqConsumer {
                                 .to_string();
 
                                 RedisEmitter::emit_to_rooom(
-                                    &format!("user:{}", payload.email),
+                                    &format!("user:{}", payload.creator_user_id),
                                     &notification,
                                 )
                                 .await;
@@ -843,21 +843,19 @@ impl RabbitMqConsumer {
 
                         match result {
                             Ok(_) => {
-                                // Send notification to all students
-                                for email in payload.emails.iter() {
-                                    let notification = json!({
-                                        "status": "success",
-                                        "email": email,
-                                        "message": "Batch register students on blockchain successfully."
-                                    })
-                                    .to_string();
+                                // Send notification to creator
+                                let notification = json!({
+                                    "status": "success",
+                                    "total_students": payload.emails.len(),
+                                    "message": "Batch register students on blockchain successfully."
+                                })
+                                .to_string();
 
-                                    RedisEmitter::emit_to_rooom(
-                                        &format!("user:{}", email),
-                                        &notification,
-                                    )
-                                    .await;
-                                }
+                                RedisEmitter::emit_to_rooom(
+                                    &format!("user:{}", payload.creator_user_id),
+                                    &notification,
+                                )
+                                .await;
 
                                 tracing::info!(
                                     "Successfully registered {} students in batch and sent notifications",
@@ -866,22 +864,20 @@ impl RabbitMqConsumer {
                             }
                             Err(e) => {
                                 tracing::error!("Failed to register students batch: {}", e);
-                                // Send failure notification to all students
-                                for email in payload.emails.iter() {
-                                    let notification = json!({
-                                        "status": "failed",
-                                        "email": email,
-                                        "reason": e.to_string(),
-                                        "message": "Failed to register students batch on blockchain. Please try again or contact with admin"
-                                    })
-                                    .to_string();
+                                // Send failure notification to creator
+                                let notification = json!({
+                                    "status": "failed",
+                                    "total_students": payload.emails.len(),
+                                    "reason": e.to_string(),
+                                    "message": "Failed to register students batch on blockchain. Please try again or contact with admin"
+                                })
+                                .to_string();
 
-                                    RedisEmitter::emit_to_rooom(
-                                        &format!("user:{}", email),
-                                        &notification,
-                                    )
-                                    .await;
-                                }
+                                RedisEmitter::emit_to_rooom(
+                                    &format!("user:{}", payload.creator_user_id),
+                                    &notification,
+                                )
+                                .await;
                             }
                         }
                     }

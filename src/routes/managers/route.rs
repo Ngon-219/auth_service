@@ -91,6 +91,7 @@ pub async fn add_manager(
         private_key,
         wallet_address: payload.manager_address.clone(),
         email: user.email.clone(),
+        creator_user_id: auth_claims.user_id.clone(),
     };
 
     RabbitMQService::publish_to_register_new_manager(rabbitmq_conn, message)
@@ -177,6 +178,7 @@ pub async fn remove_manager(
         private_key,
         manager_address: payload.manager_address.clone(),
         email: user.email.clone(),
+        creator_user_id: auth_claims.user_id.clone(),
     };
 
     RabbitMQService::publish_to_remove_manager(rabbitmq_conn, message)

@@ -230,6 +230,7 @@ pub async fn create_user(
                 student_code: student_code.unwrap_or_default(),
                 full_name,
                 email: payload.email,
+                creator_user_id: auth_claims.user_id.clone(),
                 file_upload_history_id: None,
             };
             RabbitMQService::publish_to_register_new_user(rabbit_mq_conn, register_user_msg)
@@ -246,6 +247,7 @@ pub async fn create_user(
                 private_key: user_private_key,
                 wallet_address: wallet_address.clone(),
                 email: payload.email,
+                creator_user_id: auth_claims.user_id.clone(),
             };
 
             RabbitMQService::publish_to_register_new_manager(rabbit_mq_conn, register_new_manager)
@@ -273,6 +275,7 @@ pub async fn create_user(
                 user_address: wallet_address.clone(),
                 role: role_code,
                 email: payload.email.clone(),
+                creator_user_id: auth_claims.user_id.clone(),
             };
 
             RabbitMQService::publish_to_assign_role(rabbit_mq_conn, assign_role_msg)
@@ -877,6 +880,7 @@ pub async fn delete_user(
                 private_key,
                 manager_address: wallet_address,
                 email: target_user.email.clone(),
+                creator_user_id: auth_claims.user_id.clone(),
             };
 
             RabbitMQService::publish_to_remove_manager(rabbit_mq_conn, message)
@@ -913,6 +917,7 @@ pub async fn delete_user(
                     private_key,
                     student_id,
                     email: target_user.email.clone(),
+                    creator_user_id: auth_claims.user_id.clone(),
                 };
 
                 RabbitMQService::publish_to_deactivate_student(rabbit_mq_conn, message)
@@ -1131,6 +1136,7 @@ pub async fn activate_blockchain_registration(
             student_code: student_code.clone(),
             full_name: full_name.clone(),
             email: user.email.clone(),
+            creator_user_id: claims.user_id.clone(),
             file_upload_history_id: Some(payload.history_file_upload_id.clone()),
         };
 

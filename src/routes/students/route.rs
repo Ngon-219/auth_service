@@ -267,6 +267,7 @@ pub async fn deactivate_student(
         private_key,
         student_id,
         email: user.email.clone(),
+        creator_user_id: auth_claims.user_id.clone(),
     };
 
     RabbitMQService::publish_to_deactivate_student(rabbitmq_conn, message)
@@ -354,6 +355,7 @@ pub async fn activate_student(
         private_key,
         student_id,
         email: user.email.clone(),
+        creator_user_id: auth_claims.user_id.clone(),
     };
 
     RabbitMQService::publish_to_activate_student(rabbitmq_conn, message)
