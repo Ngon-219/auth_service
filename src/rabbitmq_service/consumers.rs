@@ -1010,7 +1010,6 @@ impl RabbitMqConsumer {
     async fn create_user_from_csv_payload(payload: &UserCsvColumn) -> anyhow::Result<()> {
         let user_repo = UserRepository::new();
         let wallet_repo = WalletRepository::new();
-        let major_repo = MajorRepository::new();
 
         let hashed_password = bcrypt::hash(&payload.password, bcrypt::DEFAULT_COST)
             .map_err(|e| anyhow!("Failed to hash password: {e}"))?;
