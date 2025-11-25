@@ -6,7 +6,7 @@ use axum::{
 };
 use chrono::Utc;
 use do_an_lib::structs::token_claims::UserRole;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use std::fs::File;
 use tokio::task;
 use uuid::Uuid;
@@ -20,7 +20,7 @@ use super::dto::{
 use crate::blockchain::{BlockchainService, get_user_private_key};
 use crate::config::APP_CONFIG;
 use crate::entities::sea_orm_active_enums::RoleEnum;
-use crate::entities::user_major;
+use crate::entities::{major, user_major};
 use crate::extractor::AuthClaims;
 use crate::middleware::permission;
 use crate::rabbitmq_service::consumers::RABBITMQ_CONNECTION;
@@ -57,6 +57,28 @@ pub struct CreateUserProgressResponse {
     pub percent: u64,
     pub success: u64,
     pub failed: u64,
+}
+
+async fn fetch_major_names(
+    db: &DatabaseConnection,
+    major_ids: &[Uuid],
+) -> Result<Vec<String>, (StatusCode, String)> {
+    if major_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let majors = major::Entity::find()
+        .filter(major::Column::MajorId.is_in(major_ids.to_vec()))
+        .all(db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database error: {}", e),
+            )
+        })?;
+
+    Ok(majors.into_iter().map(|m| m.name).collect())
 }
 
 pub fn create_route() -> Router {
@@ -489,7 +511,9 @@ pub async fn get_all_users(
         let major_ids = major_relationships
             .into_iter()
             .map(|m| m.major_id)
-            .collect();
+            .collect::<Vec<_>>();
+
+        let major_names = fetch_major_names(db, &major_ids).await?;
 
         user_responses.push(UserDetailResponse {
             user_id: user_model.user_id,
@@ -504,8 +528,10 @@ pub async fn get_all_users(
             is_first_login: user_model.is_first_login,
             wallet_address: wallet_info.map(|w| w.address),
             major_ids,
+            major_names,
             created_at: user_model.create_at,
             updated_at: user_model.update_at,
+            student_code: user_model.student_code.unwrap_or("Not Student".to_string())
         });
     }
 
@@ -542,6 +568,7 @@ pub async fn get_user_by_id(
     Path(user_id): Path<Uuid>,
 ) -> Result<(StatusCode, Json<UserDetailResponse>), (StatusCode, String)> {
     let user_repo = UserRepository::new();
+    let db = user_repo.get_connection();
 
     // Check permission first
     let user_id_str = user_id.to_string();
@@ -575,6 +602,8 @@ pub async fn get_user_by_id(
         ));
     }
 
+    let major_names = fetch_major_names(db, &major_ids).await?;
+
     let response = UserDetailResponse {
         user_id: target_user.user_id,
         first_name: target_user.first_name,
@@ -582,6 +611,7 @@ pub async fn get_user_by_id(
         address: target_user.address,
         email: target_user.email,
         cccd: target_user.cccd,
+        major_names,
         phone_number: target_user.phone_number,
         role: target_user.role,
         is_priority: target_user.is_priority,
@@ -590,6 +620,7 @@ pub async fn get_user_by_id(
         major_ids,
         created_at: target_user.create_at,
         updated_at: target_user.update_at,
+        student_code: target_user.student_code.unwrap_or("Not Student".to_string()),
     };
 
     Ok((StatusCode::OK, Json(response)))
@@ -618,6 +649,7 @@ pub async fn update_user(
     Json(payload): Json<UpdateUserRequest>,
 ) -> Result<(StatusCode, Json<UserDetailResponse>), (StatusCode, String)> {
     let user_repo = UserRepository::new();
+    let db = user_repo.get_connection();
 
     // Get target user
     let target_user = user_repo
@@ -685,7 +717,6 @@ pub async fn update_user(
 
     // Update major relationships if provided
     if let Some(major_ids) = payload.major_ids {
-        let db = user_repo.get_connection();
         // Delete existing relationships
         user_major::Entity::delete_many()
             .filter(user_major::Column::UserId.eq(user_id))
@@ -728,6 +759,8 @@ pub async fn update_user(
         })?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "User not found".to_string()))?;
 
+    let major_names = fetch_major_names(db, &major_ids).await?;
+
     let response = UserDetailResponse {
         user_id: updated_user.user_id,
         first_name: updated_user.first_name,
@@ -735,6 +768,7 @@ pub async fn update_user(
         address: updated_user.address,
         email: updated_user.email,
         cccd: updated_user.cccd,
+        major_names,
         phone_number: updated_user.phone_number,
         role: updated_user.role,
         is_priority: updated_user.is_priority,
@@ -743,6 +777,7 @@ pub async fn update_user(
         major_ids,
         created_at: updated_user.create_at,
         updated_at: updated_user.update_at,
+        student_code: target_user.student_code.unwrap_or("Not Student".to_string()),
     };
 
     Ok((StatusCode::OK, Json(response)))

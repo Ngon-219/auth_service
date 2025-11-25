@@ -147,6 +147,7 @@ pub struct UserDetailResponse {
     pub address: String,
     pub email: String,
     pub cccd: String,
+    pub major_names: Vec<String>,
     pub phone_number: String,
     pub role: RoleEnum,
     pub is_priority: bool,
@@ -155,6 +156,7 @@ pub struct UserDetailResponse {
     pub major_ids: Vec<Uuid>,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
+    pub student_code: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

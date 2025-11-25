@@ -2,8 +2,9 @@
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Copy, Clone, Default, Debug, DeriveEntity)]
+#[derive(Copy, Clone, Default, Debug, DeriveEntity, ToSchema)]
 pub struct Entity;
 
 impl EntityName for Entity {

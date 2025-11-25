@@ -68,7 +68,8 @@ impl UserRepository {
                 user::Column::FirstName
                     .contains(&search_pattern)
                     .or(user::Column::LastName.contains(&search_pattern))
-                    .or(user::Column::Email.contains(&search_pattern)),
+                    .or(user::Column::Email.contains(&search_pattern))
+                    .or(user::Column::StudentCode.contains(&search_pattern)),
             );
         }
 

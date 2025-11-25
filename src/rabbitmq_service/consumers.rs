@@ -9,7 +9,7 @@ use crate::redis_service::redis_emitter::RedisEmitter;
 use crate::redis_service::redis_service::{
     BlockchainRegistrationProgress, FileHandleTrackProgress,
 };
-use crate::repositories::{MajorRepository, UserRepository, WalletRepository};
+use crate::repositories::{UserRepository, WalletRepository};
 use crate::routes::users::dto::UserCsvColumn;
 use crate::utils::encryption::encrypt_private_key;
 use anyhow::{Context, anyhow};
