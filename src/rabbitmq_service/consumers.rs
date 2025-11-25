@@ -9,17 +9,21 @@ use crate::redis_service::redis_emitter::RedisEmitter;
 use crate::redis_service::redis_service::{
     BlockchainRegistrationProgress, FileHandleTrackProgress,
 };
-use crate::repositories::{UserRepository, WalletRepository};
+use crate::repositories::{MajorRepository, UserRepository, WalletRepository};
 use crate::routes::users::dto::UserCsvColumn;
 use crate::utils::encryption::encrypt_private_key;
 use anyhow::{Context, anyhow};
+use chrono::Utc;
 use futures::StreamExt;
+use http::StatusCode;
 use lapin::options::{BasicAckOptions, BasicConsumeOptions};
 use lapin::types::FieldTable;
 use lapin::{Connection, ConnectionProperties};
+use sea_orm::{ActiveModelTrait, Set};
 use serde_json::json;
 use tokio::sync::OnceCell;
 use uuid::Uuid;
+use crate::entities::user_major;
 
 pub const REGISTER_NEW_USER_CHANNEL: &str = "create::new::user";
 pub const CREATE_USER_DB: &str = "create::user::db";
@@ -1006,6 +1010,7 @@ impl RabbitMqConsumer {
     async fn create_user_from_csv_payload(payload: &UserCsvColumn) -> anyhow::Result<()> {
         let user_repo = UserRepository::new();
         let wallet_repo = WalletRepository::new();
+        let major_repo = MajorRepository::new();
 
         let hashed_password = bcrypt::hash(&payload.password, bcrypt::DEFAULT_COST)
             .map_err(|e| anyhow!("Failed to hash password: {e}"))?;
@@ -1070,6 +1075,26 @@ impl RabbitMqConsumer {
             )
             .await
             .context("Failed to create wallet")?;
+
+        let db = user_repo.get_connection();
+        let now = Utc::now().naive_utc();
+        for major_id in payload.major_ids.iter() {
+            let major_id_uuid = Uuid::parse_str(major_id).expect("Failed to parse major id");
+            let relationship_model = user_major::ActiveModel {
+                user_id: Set(user_id),
+                major_id: Set(major_id_uuid),
+                create_at: Set(now),
+                updated_at: Set(now),
+            };
+
+            relationship_model.insert(db).await.map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to create user-major relationship: {}", e),
+                )
+            })
+                .map_err(|e| anyhow!("Failed to create user-major relationship: {}", e.1))?;
+        }
 
         Ok(())
     }
