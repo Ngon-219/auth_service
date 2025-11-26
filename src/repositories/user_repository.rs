@@ -35,6 +35,7 @@ impl UserRepository {
         let user = user::Entity::find()
             .filter(user::Column::Email.eq(email))
             .filter(user::Column::DeletedAt.is_null())
+            .filter(user::Column::Status.eq(UserStatus::Sync))
             .one(db)
             .await?;
         Ok(user)
@@ -290,6 +291,7 @@ impl UserRepository {
         let db = UserRepository.get_connection();
         let user = user::Entity::find()
             // .filter(user::Column::DeletedAt.is_null())
+            .filter(user::Column::Role.eq(RoleEnum::Student))
             .order_by_desc(user::Column::CreateAt)
             .one(db)
             .await?;

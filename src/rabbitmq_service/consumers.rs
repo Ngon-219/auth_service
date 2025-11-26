@@ -310,6 +310,22 @@ impl RabbitMqConsumer {
 
                         match result {
                             Ok(_) => {
+                                // Update user status to Sync after successful blockchain registration
+                                let user_repo = UserRepository::new();
+                                if let Err(status_err) = user_repo
+                                    .update_status_by_email(
+                                        &deserialize_payload.email,
+                                        UserStatus::Sync,
+                                    )
+                                    .await
+                                {
+                                    tracing::error!(
+                                        "Failed to update user status to Sync for {}: {}",
+                                        deserialize_payload.email,
+                                        status_err
+                                    );
+                                }
+
                                 let notification = json!({
                                     "status": "success",
                                     "email": deserialize_payload.email,
@@ -330,21 +346,24 @@ impl RabbitMqConsumer {
                             }
                             Err(e) => {
                                 tracing::error!("Failed to register new manager: {}", e);
+                                
+                                // Update user status to Failed after blockchain error
                                 let user_repo = UserRepository::new();
-                                tracing::info!(
-                                    "Attempting to delete user with email: {} after blockchain registration failed",
-                                    deserialize_payload.email
-                                );
-                                if let Err(delete_err) =
-                                    user_repo.delete_by_email(&deserialize_payload.email).await
+                                if let Err(status_err) = user_repo
+                                    .update_status_by_email(
+                                        &deserialize_payload.email,
+                                        UserStatus::Failed,
+                                    )
+                                    .await
                                 {
                                     tracing::error!(
-                                        "Failed to delete user after blockchain error: {}",
-                                        delete_err
+                                        "Failed to update user status to Failed for {}: {}",
+                                        deserialize_payload.email,
+                                        status_err
                                     );
                                 } else {
                                     tracing::info!(
-                                        "Successfully deleted user with email: {} after blockchain registration failed",
+                                        "Set user status to Failed for {} after blockchain error",
                                         deserialize_payload.email
                                     );
                                 }
@@ -436,6 +455,22 @@ impl RabbitMqConsumer {
 
                         match result {
                             Ok(_) => {
+                                // Update user status to Sync after successful blockchain role assignment
+                                let user_repo = UserRepository::new();
+                                if let Err(status_err) = user_repo
+                                    .update_status_by_email(
+                                        &payload.email,
+                                        UserStatus::Sync,
+                                    )
+                                    .await
+                                {
+                                    tracing::error!(
+                                        "Failed to update user status to Sync for {}: {}",
+                                        payload.email,
+                                        status_err
+                                    );
+                                }
+
                                 let notification = json!({
                                     "status": "success",
                                     "email": payload.email,
@@ -457,6 +492,23 @@ impl RabbitMqConsumer {
                             }
                             Err(e) => {
                                 tracing::error!("Failed to assign role: {}", e);
+                                
+                                // Update user status to Failed after blockchain error
+                                let user_repo = UserRepository::new();
+                                if let Err(status_err) = user_repo
+                                    .update_status_by_email(
+                                        &payload.email,
+                                        UserStatus::Failed,
+                                    )
+                                    .await
+                                {
+                                    tracing::error!(
+                                        "Failed to update user status to Failed for {}: {}",
+                                        payload.email,
+                                        status_err
+                                    );
+                                }
+
                                 let notification = json!({
                                     "status": "failed",
                                     "email": payload.email,
@@ -536,6 +588,22 @@ impl RabbitMqConsumer {
 
                         match result {
                             Ok(_) => {
+                                // Update user status to Sync after successful blockchain manager removal
+                                let user_repo = UserRepository::new();
+                                if let Err(status_err) = user_repo
+                                    .update_status_by_email(
+                                        &payload.email,
+                                        UserStatus::Sync,
+                                    )
+                                    .await
+                                {
+                                    tracing::error!(
+                                        "Failed to update user status to Sync for {}: {}",
+                                        payload.email,
+                                        status_err
+                                    );
+                                }
+
                                 let notification = json!({
                                     "status": "success",
                                     "email": payload.email,
@@ -556,6 +624,23 @@ impl RabbitMqConsumer {
                             }
                             Err(e) => {
                                 tracing::error!("Failed to remove manager: {}", e);
+                                
+                                // Update user status to Failed after blockchain error
+                                let user_repo = UserRepository::new();
+                                if let Err(status_err) = user_repo
+                                    .update_status_by_email(
+                                        &payload.email,
+                                        UserStatus::Failed,
+                                    )
+                                    .await
+                                {
+                                    tracing::error!(
+                                        "Failed to update user status to Failed for {}: {}",
+                                        payload.email,
+                                        status_err
+                                    );
+                                }
+
                                 let notification = json!({
                                     "status": "failed",
                                     "email": payload.email,
@@ -635,6 +720,22 @@ impl RabbitMqConsumer {
 
                         match result {
                             Ok(_) => {
+                                // Update user status to Sync after successful blockchain deactivation
+                                let user_repo = UserRepository::new();
+                                if let Err(status_err) = user_repo
+                                    .update_status_by_email(
+                                        &payload.email,
+                                        UserStatus::Sync,
+                                    )
+                                    .await
+                                {
+                                    tracing::error!(
+                                        "Failed to update user status to Sync for {}: {}",
+                                        payload.email,
+                                        status_err
+                                    );
+                                }
+
                                 let notification = json!({
                                     "status": "success",
                                     "email": payload.email,
@@ -655,6 +756,23 @@ impl RabbitMqConsumer {
                             }
                             Err(e) => {
                                 tracing::error!("Failed to deactivate student: {}", e);
+                                
+                                // Update user status to Failed after blockchain error
+                                let user_repo = UserRepository::new();
+                                if let Err(status_err) = user_repo
+                                    .update_status_by_email(
+                                        &payload.email,
+                                        UserStatus::Failed,
+                                    )
+                                    .await
+                                {
+                                    tracing::error!(
+                                        "Failed to update user status to Failed for {}: {}",
+                                        payload.email,
+                                        status_err
+                                    );
+                                }
+
                                 let notification = json!({
                                     "status": "failed",
                                     "email": payload.email,
@@ -734,6 +852,22 @@ impl RabbitMqConsumer {
 
                         match result {
                             Ok(_) => {
+                                // Update user status to Sync after successful blockchain activation
+                                let user_repo = UserRepository::new();
+                                if let Err(status_err) = user_repo
+                                    .update_status_by_email(
+                                        &payload.email,
+                                        UserStatus::Sync,
+                                    )
+                                    .await
+                                {
+                                    tracing::error!(
+                                        "Failed to update user status to Sync for {}: {}",
+                                        payload.email,
+                                        status_err
+                                    );
+                                }
+
                                 let notification = json!({
                                     "status": "success",
                                     "email": payload.email,
@@ -754,6 +888,23 @@ impl RabbitMqConsumer {
                             }
                             Err(e) => {
                                 tracing::error!("Failed to activate student: {}", e);
+                                
+                                // Update user status to Failed after blockchain error
+                                let user_repo = UserRepository::new();
+                                if let Err(status_err) = user_repo
+                                    .update_status_by_email(
+                                        &payload.email,
+                                        UserStatus::Failed,
+                                    )
+                                    .await
+                                {
+                                    tracing::error!(
+                                        "Failed to update user status to Failed for {}: {}",
+                                        payload.email,
+                                        status_err
+                                    );
+                                }
+
                                 let notification = json!({
                                     "status": "failed",
                                     "email": payload.email,
@@ -843,6 +994,21 @@ impl RabbitMqConsumer {
 
                         match result {
                             Ok(_) => {
+                                // Update status to Sync for all students after successful batch registration
+                                let user_repo = UserRepository::new();
+                                for email in &payload.emails {
+                                    if let Err(status_err) = user_repo
+                                        .update_status_by_email(email, UserStatus::Sync)
+                                        .await
+                                    {
+                                        tracing::error!(
+                                            "Failed to update user status to Sync for {}: {}",
+                                            email,
+                                            status_err
+                                        );
+                                    }
+                                }
+
                                 // Send notification to creator
                                 let notification = json!({
                                     "status": "success",
@@ -864,6 +1030,22 @@ impl RabbitMqConsumer {
                             }
                             Err(e) => {
                                 tracing::error!("Failed to register students batch: {}", e);
+                                
+                                // Update status to Failed for all students after batch registration error
+                                let user_repo = UserRepository::new();
+                                for email in &payload.emails {
+                                    if let Err(status_err) = user_repo
+                                        .update_status_by_email(email, UserStatus::Failed)
+                                        .await
+                                    {
+                                        tracing::error!(
+                                            "Failed to update user status to Failed for {}: {}",
+                                            email,
+                                            status_err
+                                        );
+                                    }
+                                }
+
                                 // Send failure notification to creator
                                 let notification = json!({
                                     "status": "failed",
