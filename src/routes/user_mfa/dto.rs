@@ -63,3 +63,10 @@ pub struct VerifyMfaCodeTestResponseDto {
     pub reason: String,
     pub locked_until: Option<i64>,
 }
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MfaStatusResponseDto {
+    pub is_enabled: bool,
+    pub message: Option<String>,
+}

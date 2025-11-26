@@ -3,13 +3,13 @@ use crate::extractor::AuthClaims;
 use crate::rabbitmq_service::rabbitmq_service::RabbitMQService;
 use crate::repositories::{OtpVerifyRepository, UserMfaRepository, UserRepository};
 use crate::routes::user_mfa::dto::{
-    EnableMfaRequestDto, EnableMfaResponseDto, ReqEnableMfaResponseDto,
+    EnableMfaRequestDto, EnableMfaResponseDto, MfaStatusResponseDto, ReqEnableMfaResponseDto,
     VerifyMfaCodeTestRequestDto, VerifyMfaCodeTestResponseDto,
 };
 use crate::utils::encryption::encrypt;
 use crate::utils::gen_otp_code::gen_code;
 use anyhow::Context;
-use axum::{Json, Router, http::StatusCode, routing::post};
+use axum::{Json, Router, http::StatusCode, routing::{get, post}};
 use chrono::{Duration, Utc};
 use google_authenticator::GoogleAuthenticator;
 use urlencoding::encode;
@@ -17,9 +17,52 @@ use uuid::Uuid;
 
 pub fn create_route() -> Router {
     Router::new()
+        .route("/api/v1/user-mfa/status", get(get_mfa_status))
         .route("/api/v1/user-mfa/enable", post(req_enable_mfa))
         .route("/api/v1/user-mfa/enable-mfa", post(enable_mfa))
         .route("/api/v1/user-mfa/verify", post(verify_mfa_code_test))
+}
+
+#[utoipa::path(
+    get,
+    tag = "security-settings",
+    path = "/api/v1/user-mfa/status",
+    responses(
+        (status = 200, description = "MFA status retrieved successfully", body = MfaStatusResponseDto),
+        (status = 500, description = "Internal server error"),
+    ),
+    security(("bearer_auth" = []))
+)]
+#[axum::debug_handler]
+pub async fn get_mfa_status(
+    AuthClaims(claims): AuthClaims,
+) -> Result<(StatusCode, Json<MfaStatusResponseDto>), (StatusCode, String)> {
+    let mfa_repo = UserMfaRepository::new();
+
+    let user_id = Uuid::parse_str(&claims.user_id)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid user_id: {}", e)))?;
+
+    let mfa_record = mfa_repo.find_by_user_id(user_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to check MFA status: {}", e),
+        )
+    })?;
+
+    let is_enabled = mfa_record
+        .map(|mfa| mfa.is_enabled)
+        .unwrap_or(false);
+
+    let response = MfaStatusResponseDto {
+        is_enabled,
+        message: if is_enabled {
+            Some("MFA is enabled".to_string())
+        } else {
+            Some("MFA is not enabled. Please enable MFA to use this feature.".to_string())
+        },
+    };
+
+    Ok((StatusCode::OK, Json(response)))
 }
 
 #[utoipa::path(
