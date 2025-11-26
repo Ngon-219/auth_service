@@ -9,7 +9,7 @@ use crate::redis_service::redis_emitter::RedisEmitter;
 use crate::redis_service::redis_service::{
     BlockchainRegistrationProgress, FileHandleTrackProgress,
 };
-use crate::repositories::{UserRepository, WalletRepository};
+use crate::repositories::{file_upload_repository::FileUploadRepository, UserRepository, WalletRepository};
 use crate::routes::users::dto::UserCsvColumn;
 use crate::utils::encryption::encrypt_private_key;
 use anyhow::{Context, anyhow};
@@ -152,6 +152,22 @@ impl RabbitMqConsumer {
                                             file_upload_history_id,
                                             progress_err
                                         );
+                                    } else {
+                                        // Check if process is complete and update status
+                                        let file_repo = FileUploadRepository::new();
+                                        if let Err(status_err) = file_repo
+                                            .check_and_update_blockchain_status_on_completion(
+                                                file_upload_history_id,
+                                                crate::repositories::file_upload_repository::FileUploadStatus::SyncBlockchain,
+                                            )
+                                            .await
+                                        {
+                                            tracing::error!(
+                                                "Failed to check and update blockchain status for {}: {}",
+                                                file_upload_history_id,
+                                                status_err
+                                            );
+                                        }
                                     }
                                 }
 
@@ -190,6 +206,22 @@ impl RabbitMqConsumer {
                                             file_upload_history_id,
                                             progress_err
                                         );
+                                    } else {
+                                        // Check if process is complete and update status
+                                        let file_repo = FileUploadRepository::new();
+                                        if let Err(status_err) = file_repo
+                                            .check_and_update_blockchain_status_on_completion(
+                                                file_upload_history_id,
+                                                crate::repositories::file_upload_repository::FileUploadStatus::SyncBlockchain,
+                                            )
+                                            .await
+                                        {
+                                            tracing::error!(
+                                                "Failed to check and update blockchain status for {}: {}",
+                                                file_upload_history_id,
+                                                status_err
+                                            );
+                                        }
                                     }
                                 }
 
@@ -1153,6 +1185,22 @@ impl RabbitMqConsumer {
                                             file_name,
                                             success_err
                                         );
+                                    } else {
+                                        // Check if process is complete and update status
+                                        let file_repo = FileUploadRepository::new();
+                                        if let Err(status_err) = file_repo
+                                            .check_and_update_status_on_completion(
+                                                file_name,
+                                                crate::repositories::file_upload_repository::FileUploadStatus::SyncDb,
+                                            )
+                                            .await
+                                        {
+                                            tracing::error!(
+                                                "Failed to check and update status for {}: {}",
+                                                file_name,
+                                                status_err
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -1167,6 +1215,22 @@ impl RabbitMqConsumer {
                                             file_name,
                                             failed_err
                                         );
+                                    } else {
+                                        // Check if process is complete and update status
+                                        let file_repo = FileUploadRepository::new();
+                                        if let Err(status_err) = file_repo
+                                            .check_and_update_status_on_completion(
+                                                file_name,
+                                                crate::repositories::file_upload_repository::FileUploadStatus::SyncDb,
+                                            )
+                                            .await
+                                        {
+                                            tracing::error!(
+                                                "Failed to check and update status for {}: {}",
+                                                file_name,
+                                                status_err
+                                            );
+                                        }
                                     }
                                 }
                             }

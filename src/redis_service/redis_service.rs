@@ -171,6 +171,8 @@ impl JwtBlacklist {
 
 pub struct FileHandleTrackProgress;
 
+pub struct ChunkUploadProgress;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileProgress {
     pub total: u64,
@@ -478,6 +480,108 @@ pub async fn helper_get_blockchain_registration_progress(
         success: success.unwrap_or(0),
         failed: failed.unwrap_or(0),
     })
+}
+
+impl ChunkUploadProgress {
+    /// Set total chunks for a file upload (only if not already set)
+    pub async fn set_total_chunks(file_name: &str, total: u64) -> Result<()> {
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
+
+        let key = format!("chunk_upload_tracker:{}", file_name);
+        
+        // Check if total already exists
+        let existing: Option<u64> = redis.get(&key).await?;
+        
+        // Only set if not already set (to handle out-of-order chunks)
+        if existing.is_none() {
+            let _: () = redis
+                .set_ex(&key, total, FILE_TRACKER_EXPRIED_TIME as u64)
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Mark a chunk as uploaded
+    pub async fn mark_chunk_uploaded(file_name: &str, chunk_number: usize) -> Result<()> {
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
+
+        let key = format!("chunk_uploaded:{}:{}", file_name, chunk_number);
+        let _: () = redis
+            .set_ex(&key, 1u64, FILE_TRACKER_EXPRIED_TIME as u64)
+            .await?;
+
+        // Update current progress (count of uploaded chunks)
+        let progress_key = format!("chunk_upload_progress:{}", file_name);
+        let current: Option<u64> = redis.get(&progress_key).await?;
+        let next_value = current.map(|v| v + 1).unwrap_or(1);
+
+        let _: () = redis
+            .set_ex(&progress_key, next_value, FILE_TRACKER_EXPRIED_TIME as u64)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Get chunk upload progress
+    pub async fn get_progress(file_name: &str) -> Result<FileProgress> {
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
+
+        let key_total = format!("chunk_upload_tracker:{}", file_name);
+        let key_current = format!("chunk_upload_progress:{}", file_name);
+
+        let total: Option<u64> = redis
+            .get(&key_total)
+            .await
+            .context("Failed to get total chunks from Redis")?;
+
+        let current: Option<u64> = redis
+            .get(&key_current)
+            .await
+            .context("Failed to get current chunk progress from Redis")?;
+
+        let total = total.unwrap_or(0);
+        let mut current = current.unwrap_or(0);
+        if total > 0 && current > total {
+            current = total;
+        }
+
+        let percent = if total == 0 {
+            0
+        } else {
+            current.saturating_mul(100).checked_div(total).unwrap_or(0)
+        };
+
+        Ok(FileProgress {
+            total,
+            current,
+            percent,
+            success: current, // For chunk upload, success = current (chunks uploaded)
+            failed: 0,       // No failed concept for chunk upload
+        })
+    }
+
+    /// Reset chunk upload progress
+    pub async fn reset_progress(file_name: &str) -> Result<()> {
+        let mut redis = get_redis()
+            .await
+            .context("Failed to get Redis connection")?;
+
+        let key_total = format!("chunk_upload_tracker:{}", file_name);
+        let key_current = format!("chunk_upload_progress:{}", file_name);
+
+        // Delete keys
+        let _: () = redis.del(&key_total).await?;
+        let _: () = redis.del(&key_current).await?;
+
+        Ok(())
+    }
 }
 
 async fn increment_counter(key: &str, ttl: u64) -> Result<()> {

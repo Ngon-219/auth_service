@@ -1,4 +1,5 @@
 use crate::repositories::file_upload_repository::FileUploadRepository;
+use crate::redis_service::redis_service::ChunkUploadProgress;
 use axum::Json;
 use axum::extract::Multipart;
 use axum::response::{IntoResponse, Response};
@@ -142,6 +143,54 @@ pub async fn upload_chunk(
         )
     })?;
 
+    // Create or get file_upload_history_id on first chunk
+    let upload_file_history_repo = FileUploadRepository::new();
+    let file_upload_history_id = if chunk_number == 0 {
+        // First chunk - create file upload history record
+        match upload_file_history_repo.create_new_file_upload(&file_name, user_id).await {
+            Ok(id) => {
+                // Initialize chunk upload progress tracking with file_upload_history_id
+                if let Err(e) = ChunkUploadProgress::set_total_chunks(&id.to_string(), total_chunks as u64).await {
+                    tracing::warn!("Failed to set total chunks for {}: {}", id, e);
+                }
+                Some(id)
+            }
+            Err(e) => {
+                tracing::warn!("Failed to create file upload history for {}: {}", file_name, e);
+                None
+            }
+        }
+    } else {
+        // Try to find existing file upload history by original file_name
+        match upload_file_history_repo.find_by_file_name(&file_name).await {
+            Ok(Some(record)) => {
+                // Initialize if not already set
+                if let Err(e) = ChunkUploadProgress::set_total_chunks(&record.file_upload_history_id.to_string(), total_chunks as u64).await {
+                    tracing::warn!("Failed to set total chunks for {}: {}", record.file_upload_history_id, e);
+                }
+                Some(record.file_upload_history_id)
+            }
+            _ => None
+        }
+    };
+
+    // Track chunk upload progress using file_upload_history_id if available, otherwise use file_name
+    let _progress_key = if let Some(id) = file_upload_history_id {
+        if let Err(e) = ChunkUploadProgress::mark_chunk_uploaded(&id.to_string(), chunk_number).await {
+            tracing::warn!("Failed to track chunk upload progress for {} chunk {}: {}", id, chunk_number, e);
+        }
+        id.to_string()
+    } else {
+        // Fallback to file_name if no history record
+        if let Err(e) = ChunkUploadProgress::set_total_chunks(&file_name, total_chunks as u64).await {
+            tracing::warn!("Failed to set total chunks for {}: {}", file_name, e);
+        }
+        if let Err(e) = ChunkUploadProgress::mark_chunk_uploaded(&file_name, chunk_number).await {
+            tracing::warn!("Failed to track chunk upload progress for {} chunk {}: {}", file_name, chunk_number, e);
+        }
+        file_name.clone()
+    };
+
     // Check if all chunks are uploaded
     let is_complete = is_upload_complete(&temp_dir, total_chunks)
         .await
@@ -167,25 +216,45 @@ pub async fn upload_chunk(
             format!("{}_{}.{}", file_stem, timestamp, extension)
         };
         let output_path = format!("./uploads/{}", new_file_name);
-        assemble_file(&temp_dir, &output_path, total_chunks)
-            .await
-            .map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Failed to assemble file: {}", e),
-                )
-            })?;
+        if let Err(e) = assemble_file(&temp_dir, &output_path, total_chunks).await {
+            // Update status to failed if file assembly fails
+            if let Some(id) = file_upload_history_id {
+                let _ = upload_file_history_repo
+                    .update_status_file_upload(&id.to_string(), crate::repositories::file_upload_repository::FileUploadStatus::Failed)
+                    .await;
+            }
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to assemble file: {}", e),
+            ));
+        }
 
-        let upload_file_history_repo = FileUploadRepository::new();
-        upload_file_history_repo
-            .create_new_file_upload(&new_file_name, user_id)
-            .await
-            .map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Failed to save upload history: {}", e),
-                )
-            })?;
+        // Update file_name in existing record or create new one
+        if let Some(id) = file_upload_history_id {
+            // Update existing record with new file_name (with timestamp)
+            if let Err(e) = upload_file_history_repo.update_file_name(&id.to_string(), &new_file_name).await {
+                tracing::warn!("Failed to update file_name for {}: {}", id, e);
+            }
+            // Clean up chunk upload progress tracking
+            if let Err(e) = ChunkUploadProgress::reset_progress(&id.to_string()).await {
+                tracing::warn!("Failed to reset chunk upload progress for {}: {}", id, e);
+            }
+        } else {
+            // Create new record if not exists
+            upload_file_history_repo
+                .create_new_file_upload(&new_file_name, user_id)
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to save upload history: {}", e),
+                    )
+                })?;
+            // Clean up chunk upload progress tracking
+            if let Err(e) = ChunkUploadProgress::reset_progress(&file_name).await {
+                tracing::warn!("Failed to reset chunk upload progress for {}: {}", file_name, e);
+            }
+        }
 
         Ok((
             StatusCode::OK,

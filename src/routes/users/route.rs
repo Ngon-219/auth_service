@@ -352,6 +352,36 @@ pub async fn create_users_bulk(
             )
         })?;
 
+    // Check if file has already been processed
+    // Only allow processing if status is "pending"
+    if file_upload.status != "pending" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "File has already been processed. Current status: {}",
+                file_upload.status
+            ),
+        ));
+    }
+
+    // Check if there's already progress (another process might be running)
+    use crate::redis_service::redis_service::helper_get_current_file_progress;
+    let existing_progress = helper_get_current_file_progress(&file_upload.file_name)
+        .await
+        .ok();
+    
+    if let Some(progress) = existing_progress {
+        if progress.total > 0 && progress.current > 0 {
+            return Err((
+                StatusCode::CONFLICT,
+                format!(
+                    "File is already being processed. Progress: {}/{}",
+                    progress.current, progress.total
+                ),
+            ));
+        }
+    }
+
     let file_name = file_upload.file_name.clone();
     let file_name_for_task = file_name.clone();
 
@@ -383,12 +413,22 @@ pub async fn create_users_bulk(
     match result {
         Ok(inner_result) => match inner_result {
             Ok(users) => {
-                let rabbitmq_conn = RABBITMQ_CONNECTION.get().ok_or_else(|| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "RabbitMQ connection not initialized".to_string(),
-                    )
-                })?;
+                let rabbitmq_conn = match RABBITMQ_CONNECTION.get() {
+                    Some(conn) => conn,
+                    None => {
+                        // Update status to failed if RabbitMQ not initialized
+                        let _ = file_history_repo
+                            .update_status_file_upload(
+                                &payload.history_file_upload_id,
+                                crate::repositories::file_upload_repository::FileUploadStatus::Failed,
+                            )
+                            .await;
+                        return Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "RabbitMQ connection not initialized".to_string(),
+                        ));
+                    }
+                };
 
                 let total_records = users.len() as u64;
 
@@ -418,14 +458,19 @@ pub async fn create_users_bulk(
                     user.file_name = Some(file_name.clone());
                     user.row_number = Some((index + 1) as u64);
 
-                    RabbitMQService::publish_to_create_user_db(rabbitmq_conn, user)
-                        .await
-                        .map_err(|e| {
-                            (
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                format!("Failed to publish create user message: {}", e),
+                    if let Err(e) = RabbitMQService::publish_to_create_user_db(rabbitmq_conn, user).await {
+                        // Update status to failed if publish fails
+                        let _ = file_history_repo
+                            .update_status_file_upload(
+                                &payload.history_file_upload_id,
+                                crate::repositories::file_upload_repository::FileUploadStatus::Failed,
                             )
-                        })?;
+                            .await;
+                        return Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Failed to publish create user message: {}", e),
+                        ));
+                    }
                 }
 
                 Ok((
@@ -433,13 +478,31 @@ pub async fn create_users_bulk(
                     "Publish batch user to msg queue success".to_string(),
                 ))
             }
-            Err((status, msg)) => Err((status, msg)),
+            Err((status, msg)) => {
+                // Update status to failed if CSV parsing fails
+                let _ = file_history_repo
+                    .update_status_file_upload(
+                        &payload.history_file_upload_id,
+                        crate::repositories::file_upload_repository::FileUploadStatus::Failed,
+                    )
+                    .await;
+                Err((status, msg))
+            }
         },
 
-        Err(join_error) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("System error: Task panicked or cancelled - {}", join_error),
-        )),
+        Err(join_error) => {
+            // Update status to failed if task join fails
+            let _ = file_history_repo
+                .update_status_file_upload(
+                    &payload.history_file_upload_id,
+                    crate::repositories::file_upload_repository::FileUploadStatus::Failed,
+                )
+                .await;
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("System error: Task panicked or cancelled - {}", join_error),
+            ))
+        }   
     }
 }
 
@@ -989,6 +1052,51 @@ pub async fn activate_blockchain_registration(
                 format!("Failed to get file information: {}", e),
             )
         })?;
+
+    // Check if file has already been processed for blockchain registration
+    // Only allow if status is "sync_db" (users created successfully)
+    // Reject if already "sync_blockchain" or "failed" or "sync"
+    if file_upload.status == "sync_blockchain" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Blockchain registration has already been completed for this file".to_string(),
+        ));
+    }
+
+    if file_upload.status == "failed" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "File processing failed. Cannot proceed with blockchain registration".to_string(),
+        ));
+    }
+
+    if file_upload.status != "sync_db" && file_upload.status != "pending" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "File must be in 'sync_db' status before blockchain registration. Current status: {}",
+                file_upload.status
+            ),
+        ));
+    }
+
+    // Check if blockchain registration is already in progress
+    use crate::redis_service::redis_service::helper_get_blockchain_registration_progress;
+    let existing_progress = helper_get_blockchain_registration_progress(&payload.history_file_upload_id)
+        .await
+        .ok();
+    
+    if let Some(progress) = existing_progress {
+        if progress.total > 0 && progress.current > 0 {
+            return Err((
+                StatusCode::CONFLICT,
+                format!(
+                    "Blockchain registration is already in progress. Progress: {}/{}",
+                    progress.current, progress.total
+                ),
+            ));
+        }
+    }
 
     let user_repo = UserRepository::new();
     let user_id = Uuid::parse_str(&claims.user_id).map_err(|e| {
