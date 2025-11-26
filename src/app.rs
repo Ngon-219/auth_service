@@ -23,6 +23,7 @@ pub async fn create_app() -> anyhow::Result<Router> {
         .merge(routes::auth::create_route())
         .merge(routes::profile::create_route())
         .merge(routes::users::create_route())
+        .merge(routes::stats::route::create_route())
         .merge(routes::departments::create_route())
         .merge(routes::majors::create_route())
         .merge(routes::managers::create_route())

@@ -7,16 +7,13 @@ use auth_service::utils::tracing::init_standard_tracing;
 use base64::{engine::general_purpose, Engine as _};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    dotenv::dotenv().ok();
-    init_standard_tracing(env!("CARGO_CRATE_NAME"));
-
-    tracing::info!("Initializing template PDF for Certificate document type...");
-
-    let db_connection = get_database_connection().await;
-
-    let template_path = Path::new("src/sample_template/certificate_pdf_template");
+async fn init_template_for_document_type(
+    db_connection: &sea_orm::DatabaseConnection,
+    document_type_name: &str,
+    template_path: &Path,
+    description: &str,
+) -> anyhow::Result<()> {
+    tracing::info!("Initializing template PDF for {} document type...", document_type_name);
 
     let template_content = if template_path.exists() {
         match fs::read_to_string(template_path) {
@@ -28,23 +25,16 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     } else {
-        let alt_path = Path::new("src/sample_template/certifiate_template.json");
-        if alt_path.exists() {
-            fs::read_to_string(alt_path)
-                .map_err(|e| anyhow::anyhow!("Failed to read template file: {}", e))?
-        } else {
-            return Err(anyhow::anyhow!(
-                "Template file not found. Looking for: {} or {}",
-                template_path.display(),
-                alt_path.display()
-            ));
-        }
+        return Err(anyhow::anyhow!(
+            "Template file not found. Looking for: {}",
+            template_path.display()
+        ));
     };
 
     tracing::info!("Template file read successfully, size: {} bytes", template_content.len());
 
     let document_type = document_type::Entity::find()
-        .filter(document_type::Column::DocumentTypeName.eq("Certificate"))
+        .filter(document_type::Column::DocumentTypeName.eq(document_type_name))
         .one(db_connection)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to query document_type: {}", e))?;
@@ -52,7 +42,8 @@ async fn main() -> anyhow::Result<()> {
     match document_type {
         Some(doc_type) => {
             tracing::info!(
-                "Found document_type 'Certificate' with ID: {}",
+                "Found document_type '{}' with ID: {}",
+                document_type_name,
                 doc_type.document_type_id
             );
 
@@ -66,18 +57,19 @@ async fn main() -> anyhow::Result<()> {
                 .map_err(|e| anyhow::anyhow!("Failed to update document_type: {}", e))?;
 
             tracing::info!(
-                "✅ Successfully updated template_pdf for document_type 'Certificate' (ID: {})",
+                "✅ Successfully updated template_pdf for document_type '{}' (ID: {})",
+                document_type_name,
                 updated.document_type_id
             );
             tracing::info!("Template content length: {} characters", template_content.len());
         }
         None => {
-            tracing::warn!("Document type 'Certificate' not found in database");
-            tracing::info!("Creating new document_type 'Certificate' with template...");
+            tracing::warn!("Document type '{}' not found in database", document_type_name);
+            tracing::info!("Creating new document_type '{}' with template...", document_type_name);
 
             let new_doc_type = document_type::ActiveModel {
-                document_type_name: Set("Certificate".to_string()),
-                description: Set(Some("Certificate document type".to_string())),
+                document_type_name: Set(document_type_name.to_string()),
+                description: Set(Some(description.to_string())),
                 template_pdf: Set(Some(template_content)),
                 ..Default::default()
             };
@@ -88,11 +80,46 @@ async fn main() -> anyhow::Result<()> {
                 .map_err(|e| anyhow::anyhow!("Failed to create document_type: {}", e))?;
 
             tracing::info!(
-                "✅ Successfully created document_type 'Certificate' with template (ID: {})",
+                "✅ Successfully created document_type '{}' with template (ID: {})",
+                document_type_name,
                 created.document_type_id
             );
         }
     }
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    dotenv::dotenv().ok();
+    init_standard_tracing(env!("CARGO_CRATE_NAME"));
+
+    tracing::info!("Initializing templates for Certificate and Diploma document types...");
+
+    let db_connection = get_database_connection().await;
+
+    // Init Certificate
+    let certificate_path = Path::new("src/sample_template/certifiate_template.json");
+    init_template_for_document_type(
+        &db_connection,
+        "Certificate",
+        certificate_path,
+        "Chứng chỉ",
+    )
+    .await?;
+
+    // Init Diploma
+    let diploma_path = Path::new("src/sample_template/diploma_pdf_template.json");
+    init_template_for_document_type(
+        &db_connection,
+        "Diploma",
+        diploma_path,
+        "Bằng tốt nghiệp",
+    )
+    .await?;
+
+    tracing::info!("✅ Successfully initialized templates for both Certificate and Diploma!");
 
     Ok(())
 }

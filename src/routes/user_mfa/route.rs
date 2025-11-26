@@ -206,6 +206,17 @@ pub async fn enable_mfa(
         )
     })?;
 
+    // Mark OTP as verified before enabling MFA to prevent reuse
+    otp_repo
+        .mark_as_verified(otp_record.otp_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to mark OTP as verified: {}", e),
+            )
+        })?;
+
     mfa_repo
         .create(
             user_id,

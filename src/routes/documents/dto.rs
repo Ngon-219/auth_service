@@ -132,3 +132,51 @@ pub struct DocumentTypeResponse {
     pub updated_at: NaiveDateTime,
     pub created_by: Option<Uuid>,
 }
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateDocumentTypeRequest {
+    #[schema(example = "Certificate")]
+    pub document_type_name: Option<String>,
+    #[schema(example = "Chứng chỉ")]
+    pub description: Option<String>,
+    #[schema(example = "template.pdf")]
+    pub template_pdf: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateDocumentTypeResponse {
+    pub document_type_id: Uuid,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateDocumentRequest {
+    #[schema(example = "pending")]
+    pub status: Option<String>,
+    #[schema(example = true)]
+    pub is_valid: Option<bool>,
+    #[schema(example = "QmHash...")]
+    pub ipfs_hash: Option<String>,
+    #[schema(example = "QmPdfHash...")]
+    pub pdf_ipfs_hash: Option<String>,
+    #[schema(example = "0x123...")]
+    pub document_hash: Option<String>,
+    #[schema(example = "0xabc...")]
+    pub tx_hash: Option<String>,
+    #[schema(example = "0xdef...")]
+    pub blockchain_doc_id: Option<String>,
+    #[schema(example = 123)]
+    pub token_id: Option<i64>,
+    pub metadata: Option<serde_json::Value>,
+    pub pdf_schema: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateDocumentResponse {
+    pub document_id: Uuid,
+    pub message: String,
+}

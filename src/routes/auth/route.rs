@@ -3,8 +3,8 @@ use axum_extra::TypedHeader;
 use axum_extra::headers::{Authorization, authorization::Bearer};
 
 use super::dto::{
-    ForgotPasswordRequest, ForgotPasswordResponse, LoginRequest, LoginResponse, LogoutResponse,
-    ResetPasswordRequest, ResetPasswordResponse,
+    ChangePasswordRequest, ChangePasswordResponse, ForgotPasswordRequest, ForgotPasswordResponse,
+    LoginRequest, LoginResponse, LogoutResponse, ResetPasswordRequest, ResetPasswordResponse,
 };
 use crate::config::JWT_EXPRIED_TIME;
 use crate::entities::sea_orm_active_enums::RoleEnum;
@@ -24,6 +24,7 @@ pub fn create_route() -> Router {
         .route("/api/v1/auth/logout", post(logout))
         .route("/api/v1/auth/forgot-password", post(forgot_password))
         .route("/api/v1/auth/reset-password", post(reset_password))
+        .route("/api/v1/auth/change-password", post(change_password))
 }
 
 /// Login endpoint - returns JWT token
@@ -427,6 +428,99 @@ pub async fn reset_password(
 
     let response = ResetPasswordResponse {
         message: "Password has been reset successfully".to_string(),
+    };
+
+    Ok((StatusCode::OK, Json(response)))
+}
+
+/// Change password endpoint - verify old password then set new password
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/change-password",
+    request_body = ChangePasswordRequest,
+    responses(
+        (status = 200, description = "Password changed successfully", body = ChangePasswordResponse),
+        (status = 400, description = "Invalid request"),
+        (status = 401, description = "Invalid old password"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Authentication"
+)]
+pub async fn change_password(
+    AuthClaims(auth_claims): AuthClaims,
+    Json(payload): Json<ChangePasswordRequest>,
+) -> Result<(StatusCode, Json<ChangePasswordResponse>), (StatusCode, String)> {
+    let user_repo = UserRepository::new();
+
+    let user_id = uuid::Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Invalid user_id: {}", e),
+        )
+    })?;
+
+    let user = user_repo
+        .find_by_id(user_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database error: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                "User not found".to_string(),
+            )
+        })?;
+
+    // Verify old password
+    let password_valid =
+        bcrypt::verify(&payload.old_password, &user.password).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Password verification error: {}", e),
+            )
+        })?;
+
+    if !password_valid {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "Old password is incorrect".to_string(),
+        ));
+    }
+
+    // Hash new password
+    let hashed_password =
+        bcrypt::hash(&payload.new_password, bcrypt::DEFAULT_COST).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to hash password: {}", e),
+            )
+        })?;
+
+    // Update user password
+    use crate::repositories::user_repository::UserUpdate;
+    let update = UserUpdate {
+        password: Some(hashed_password),
+        ..Default::default()
+    };
+
+    user_repo
+        .update(user_id, update)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to update password: {}", e),
+            )
+        })?;
+
+    let response = ChangePasswordResponse {
+        message: "Password has been changed successfully".to_string(),
     };
 
     Ok((StatusCode::OK, Json(response)))

@@ -4,6 +4,7 @@ use anyhow::Result;
 use chrono::Utc;
 use rand::Rng;
 use sea_orm::prelude::Decimal;
+use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
 };
@@ -129,6 +130,27 @@ impl ScoreRepository {
             .await?;
 
         Ok(certificates)
+    }
+
+    /// Remove previously generated mock transcript data to avoid unique conflicts
+    pub async fn delete_mock_transcript_data(&self, user_id: Uuid) -> Result<()> {
+        let db = self.get_connection();
+
+        // Clean up semester summaries created by mock endpoint
+        semester_summary::Entity::delete_many()
+            .filter(semester_summary::Column::UserId.eq(user_id))
+            .filter(Expr::cust("(metadata->>'mock')::boolean = true"))
+            .exec(db)
+            .await?;
+
+        // Clean up scoreboard rows created by mock endpoint
+        score_board::Entity::delete_many()
+            .filter(score_board::Column::UserId.eq(user_id))
+            .filter(Expr::cust("(metadata->>'mock')::boolean = true"))
+            .exec(db)
+            .await?;
+
+        Ok(())
     }
 
     /// Create mock certificate data for a user
@@ -353,6 +375,9 @@ impl ScoreRepository {
         user_id: Uuid,
     ) -> Result<(Vec<score_board::Model>, Vec<semester_summary::Model>)> {
         let db = self.get_connection();
+
+        // Ensure previously generated mock data is cleared to avoid duplicates
+        self.delete_mock_transcript_data(user_id).await?;
 
         // Generate ALL random data BEFORE any await to avoid Send issues
         let academic_years = vec!["2020-2021", "2021-2022", "2022-2023", "2023-2024"];

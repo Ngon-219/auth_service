@@ -192,8 +192,12 @@ impl FileUploadRepository {
         // Get progress
         let progress = helper_get_current_file_progress(file_name).await?;
         
-        // Check if process is complete (current >= total and total > 0)
-        if progress.total > 0 && progress.current >= progress.total {
+        // Calculate actual processed count (success + failed)
+        let processed = progress.success + progress.failed;
+        
+        // Check if process is complete (processed >= total and total > 0)
+        // Use processed instead of current because current only tracks successful rows
+        if progress.total > 0 && processed >= progress.total {
             // Find file upload history by file name
             if let Some(file_upload) = self.find_by_file_name(file_name).await? {
                 // If all rows failed, update status to Failed
@@ -212,9 +216,9 @@ impl FileUploadRepository {
                 .await?;
                 
                 tracing::info!(
-                    "File upload {} completed (current: {}, total: {}, success: {}, failed: {}), status updated to {}",
+                    "File upload {} completed (processed: {}, total: {}, success: {}, failed: {}), status updated to {}",
                     file_name,
-                    progress.current,
+                    processed,
                     progress.total,
                     progress.success,
                     progress.failed,
@@ -237,8 +241,12 @@ impl FileUploadRepository {
         // Get progress
         let progress = helper_get_blockchain_registration_progress(file_upload_history_id).await?;
         
-        // Check if process is complete (current >= total and total > 0)
-        if progress.total > 0 && progress.current >= progress.total {
+        // Calculate actual processed count (success + failed)
+        let processed = progress.success + progress.failed;
+        
+        // Check if process is complete (processed >= total and total > 0)
+        // Use processed instead of current because current only tracks successful rows
+        if progress.total > 0 && processed >= progress.total {
             // If all rows failed, update status to Failed
             let final_status = if progress.failed > 0 && progress.success == 0 {
                 FileUploadStatus::Failed
@@ -251,9 +259,9 @@ impl FileUploadRepository {
             self.update_status_file_upload(file_upload_history_id, final_status).await?;
             
             tracing::info!(
-                "Blockchain registration for {} completed (current: {}, total: {}, success: {}, failed: {}), status updated to {}",
+                "Blockchain registration for {} completed (processed: {}, total: {}, success: {}, failed: {}), status updated to {}",
                 file_upload_history_id,
-                progress.current,
+                processed,
                 progress.total,
                 progress.success,
                 progress.failed,

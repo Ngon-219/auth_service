@@ -63,3 +63,18 @@ pub struct ResetPasswordRequest {
 pub struct ResetPasswordResponse {
     pub message: String,
 }
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangePasswordRequest {
+    #[schema(example = "oldPassword123")]
+    pub old_password: String,
+
+    #[schema(example = "newPassword123")]
+    pub new_password: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ChangePasswordResponse {
+    pub message: String,
+}

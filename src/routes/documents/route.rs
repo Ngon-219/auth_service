@@ -1,20 +1,24 @@
 use super::dto::{
     CertificateItem, DocumentData, DocumentDataRequest, DocumentDataResponse,
     DocumentTypeResponse, MockCertificateRequest, MockCertificateResponse, MockTranscriptRequest,
-    MockTranscriptResponse, ScoreBoardItem, SemesterSummaryItem, UserInfo,
+    MockTranscriptResponse, ScoreBoardItem, SemesterSummaryItem, UpdateDocumentTypeRequest,
+    UpdateDocumentTypeResponse, UserInfo,
 };
 use crate::entities::{document_type, sea_orm_active_enums::RoleEnum};
 use crate::extractor::AuthClaims;
 use crate::repositories::{ScoreRepository, UserRepository};
 use crate::static_service::DATABASE_CONNECTION;
-use axum::{http::StatusCode, routing::get, routing::post, Json, Router};
+use axum::{extract::Path, http::StatusCode, routing::{get, post, put}, Json, Router};
 use chrono::NaiveDate;
-use sea_orm::EntityTrait;
+use do_an_lib::structs::token_claims::UserRole;
+use sea_orm::{EntityTrait, ActiveModelTrait, Set};
+use uuid::Uuid;
 
 pub fn create_route() -> Router {
     Router::new()
         .route("/api/v1/documents/data", post(get_document_data))
         .route("/api/v1/documents/types", get(get_document_types))
+        .route("/api/v1/documents/types/{document_type_id}", get(get_document_type_by_id).put(update_document_type))
         .route("/api/v1/documents/mock/certificate", post(mock_certificate))
         .route("/api/v1/documents/mock/transcript", post(mock_transcript))
 }
@@ -60,6 +64,134 @@ pub async fn get_document_types(
         .collect();
 
     Ok((StatusCode::OK, Json(response)))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/documents/types/{document_type_id}",
+    params(
+        ("document_type_id" = Uuid, Path, description = "Document Type ID")
+    ),
+    responses(
+        (status = 200, description = "Document type retrieved successfully", body = DocumentTypeResponse),
+        (status = 404, description = "Document type not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Documents"
+)]
+pub async fn get_document_type_by_id(
+    AuthClaims(_auth_claims): AuthClaims,
+    Path(document_type_id): Path<Uuid>,
+) -> Result<(StatusCode, Json<DocumentTypeResponse>), (StatusCode, String)> {
+    let db = DATABASE_CONNECTION
+        .get()
+        .expect("DATABASE_CONNECTION not set");
+
+    let doc_type = document_type::Entity::find_by_id(document_type_id)
+        .one(db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to load document type: {}", e),
+            )
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Document type not found".to_string()))?;
+
+    let response = DocumentTypeResponse {
+        document_type_id: doc_type.document_type_id,
+        document_type_name: doc_type.document_type_name,
+        description: doc_type.description,
+        template_pdf: doc_type.template_pdf,
+        created_at: doc_type.created_at,
+        updated_at: doc_type.updated_at,
+        created_by: doc_type.created_by,
+    };
+
+    Ok((StatusCode::OK, Json(response)))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/v1/documents/types/{document_type_id}",
+    params(
+        ("document_type_id" = Uuid, Path, description = "Document Type ID")
+    ),
+    request_body = UpdateDocumentTypeRequest,
+    responses(
+        (status = 200, description = "Document type updated successfully", body = UpdateDocumentTypeResponse),
+        (status = 404, description = "Document type not found"),
+        (status = 403, description = "Forbidden - Admin only"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Documents"
+)]
+pub async fn update_document_type(
+    AuthClaims(claims): AuthClaims,
+    Path(document_type_id): Path<Uuid>,
+    Json(payload): Json<UpdateDocumentTypeRequest>,
+) -> Result<(StatusCode, Json<UpdateDocumentTypeResponse>), (StatusCode, String)> {
+    // Permission check: Admin only
+    if claims.role != UserRole::ADMIN {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Only admin can update document types".to_string(),
+        ));
+    }
+
+    let db = DATABASE_CONNECTION
+        .get()
+        .expect("DATABASE_CONNECTION not set");
+
+    // Find document type
+    let document_type = document_type::Entity::find_by_id(document_type_id)
+        .one(db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to find document type: {}", e),
+            )
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Document type not found".to_string()))?;
+
+    // Update document type
+    let mut active_model: document_type::ActiveModel = document_type.into();
+
+    if let Some(document_type_name) = payload.document_type_name {
+        active_model.document_type_name = Set(document_type_name);
+    }
+
+    if let Some(description) = payload.description {
+        active_model.description = Set(Some(description));
+    }
+
+    if let Some(template_pdf) = payload.template_pdf {
+        active_model.template_pdf = Set(Some(template_pdf));
+    }
+
+    // Update updated_at timestamp
+    active_model.updated_at = Set(chrono::Utc::now().naive_utc());
+
+    active_model
+        .update(db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to update document type: {}", e),
+            )
+        })?;
+
+    Ok((
+        StatusCode::OK,
+        Json(UpdateDocumentTypeResponse {
+            document_type_id,
+            message: "Document type updated successfully".to_string(),
+        }),
+    ))
 }
 
 #[utoipa::path(
@@ -471,3 +603,4 @@ pub async fn mock_transcript(
         }),
     ))
 }
+
