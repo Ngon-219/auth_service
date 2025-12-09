@@ -150,13 +150,9 @@ pub async fn create_user(
             format!("Invalid user_id: {}", e),
         )
     })?;
-    let db = user_repo.get_connection();
-    let user_private_key = get_user_private_key(db, &user_uuid).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Invalid user_id: {}", e),
-        )
-    })?;
+    // All blockchain transactions use admin key to pay for gas
+    // Permission checking is handled in backend routes
+    let user_private_key = APP_CONFIG.admin_private_key.clone();
 
     let hashed_password = bcrypt::hash(&payload.password, bcrypt::DEFAULT_COST).map_err(|e| {
         (
@@ -945,14 +941,9 @@ pub async fn delete_user(
         )
     })?;
 
-    let private_key = get_user_private_key(db, &admin_user_id)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get private key: {}", e),
-            )
-        })?;
+    // All blockchain transactions use admin key to pay for gas
+    // Permission checking is handled in backend routes
+    let private_key = APP_CONFIG.admin_private_key.clone();
 
     // Publish blockchain message based on role
     let rabbit_mq_conn = RABBITMQ_CONNECTION.get().ok_or_else(|| {
@@ -1125,7 +1116,8 @@ pub async fn activate_blockchain_registration(
     }
 
     let user_repo = UserRepository::new();
-    let user_id = Uuid::parse_str(&claims.user_id).map_err(|e| {
+    // user_id not needed anymore since we use admin key for all blockchain operations
+    let _user_id = Uuid::parse_str(&claims.user_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Invalid user_id: {}", e),
@@ -1210,14 +1202,7 @@ pub async fn activate_blockchain_registration(
         ));
     }
 
-    // Get private key of the user (admin/manager) who will sign the transaction
-    let db = user_repo.get_connection();
-    let private_key = get_user_private_key(db, &user_id).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to get private key: {}", e),
-        )
-    })?;
+    let private_key = APP_CONFIG.admin_private_key.clone();
 
     // Set total for progress tracking
     let total_students = students.len() as u64;

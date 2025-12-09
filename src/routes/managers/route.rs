@@ -72,12 +72,9 @@ pub async fn add_manager(
         })?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "User not found".to_string()))?;
 
-    let private_key = get_user_private_key(db, &user_id).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to get private key: {}", e),
-        )
-    })?;
+    // All blockchain transactions use admin key to pay for gas
+    // Permission checking is handled in backend routes
+    let private_key = crate::config::APP_CONFIG.admin_private_key.clone();
 
     // Publish message to RabbitMQ
     let rabbitmq_conn = RABBITMQ_CONNECTION.get().ok_or_else(|| {
@@ -159,12 +156,9 @@ pub async fn remove_manager(
         })?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "User not found".to_string()))?;
 
-    let private_key = get_user_private_key(db, &user_id).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to get private key: {}", e),
-        )
-    })?;
+    // All blockchain transactions use admin key to pay for gas
+    // Permission checking is handled in backend routes
+    let private_key = crate::config::APP_CONFIG.admin_private_key.clone();
 
     // Publish message to RabbitMQ
     let rabbitmq_conn = RABBITMQ_CONNECTION.get().ok_or_else(|| {
