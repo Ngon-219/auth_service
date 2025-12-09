@@ -120,6 +120,28 @@ pub async fn create_user(
     AuthClaims(auth_claims): AuthClaims,
     Json(payload): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<UserResponse>), (StatusCode, String)> {
+    if auth_claims.role != UserRole::ADMIN && auth_claims.role != UserRole::MANAGER {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Only admin or manager can create users".to_string(),
+        ));
+    }
+
+    if auth_claims.role == UserRole::MANAGER && payload.role != RoleEnum::Student {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Managers can only create student accounts".to_string(),
+        ));
+    }
+
+    if auth_claims.role != UserRole::ADMIN 
+        && (payload.role == RoleEnum::Admin || payload.role == RoleEnum::Manager) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Only admin can create manager or admin accounts".to_string(),
+        ));
+    }
+
     let user_repo = UserRepository::new();
     let wallet_repo = WalletRepository::new();
     let user_uuid = Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
@@ -151,7 +173,7 @@ pub async fn create_user(
             )
         })?;
 
-    // Encrypt private key before storing
+    
     let encrypted_private_key =
         encrypt_private_key(&wallet_private_key, &APP_CONFIG.encryption_key).map_err(|e| {
             (
@@ -238,6 +260,7 @@ pub async fn create_user(
                 .map_err(|e| tracing::error!("Failed to publish to register new user: {e}"))
                 .ok();
         }
+
         RoleEnum::Manager => {
             let rabbit_mq_conn = RABBITMQ_CONNECTION
                 .get()
@@ -255,8 +278,8 @@ pub async fn create_user(
                 .map_err(|e| tracing::error!("Failed to publish to register new manager: {e}"))
                 .ok();
         }
+
         RoleEnum::Teacher | RoleEnum::Admin => {
-            // For Teacher and Admin, use assignRole (requires owner)
             let role_code = match payload.role {
                 RoleEnum::Admin => 3,
                 RoleEnum::Teacher => 2,
@@ -289,7 +312,7 @@ pub async fn create_user(
         }
     }
 
-    // Create user-major relationships
+
     if let Some(major_ids) = payload.major_ids {
         let db = user_repo.get_connection();
         let now = Utc::now().naive_utc();
@@ -526,8 +549,7 @@ pub async fn get_all_users(
 ) -> Result<(StatusCode, Json<UserListResponse>), (StatusCode, String)> {
     let user_repo = UserRepository::new();
     let wallet_repo = WalletRepository::new();
-
-    // Check permission: Admin or Manager
+    
     permission::is_admin_or_manager(&auth_claims)?;
 
     let manager_only_students = auth_claims.role == UserRole::MANAGER;
@@ -849,7 +871,6 @@ pub async fn update_user(
     Ok((StatusCode::OK, Json(response)))
 }
 
-/// Delete user (UC11, UC18)
 #[utoipa::path(
     delete,
     path = "/api/v1/users/{user_id}",
@@ -872,7 +893,6 @@ pub async fn delete_user(
     let user_repo = UserRepository::new();
     let wallet_repo = WalletRepository::new();
 
-    // Get target user
     let target_user = user_repo
         .find_by_id(user_id)
         .await
@@ -884,7 +904,13 @@ pub async fn delete_user(
         })?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "User not found".to_string()))?;
 
-    // Convert RoleEnum to UserRole for permission check
+    if target_user.user_id.to_string() == auth_claims.user_id.to_string() {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "You can't delete yourself".to_string(),
+        ));
+    }
+
     let target_role = match target_user.role {
         RoleEnum::Admin => UserRole::ADMIN,
         RoleEnum::Manager => UserRole::MANAGER,
@@ -957,7 +983,7 @@ pub async fn delete_user(
         }
         RoleEnum::Student => {
             // Get student_id from blockchain by wallet address
-            let blockchain = BlockchainService::new(&private_key).await.map_err(|e| {
+            let blockchain = BlockchainService::new().await.map_err(|e| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     format!("Failed to initialize blockchain service: {}", e),

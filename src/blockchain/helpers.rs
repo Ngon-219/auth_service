@@ -20,14 +20,15 @@ pub async fn get_user_private_key(db: &DatabaseConnection, user_id: &Uuid) -> Re
 }
 
 pub async fn get_user_blockchain_service(
-    db: &DatabaseConnection,
-    user_id: &Uuid,
+    _db: &DatabaseConnection,
+    _user_id: &Uuid,
 ) -> Result<BlockchainService> {
-    let private_key = get_user_private_key(db, user_id).await?;
-    BlockchainService::new(&private_key).await
+    // All blockchain operations use admin key to pay for gas
+    // Permission checking is handled in backend routes
+    BlockchainService::new().await
 }
 
 pub async fn get_admin_blockchain_service() -> Result<BlockchainService> {
-    use crate::config::APP_CONFIG;
-    BlockchainService::new(&APP_CONFIG.admin_private_key).await
+    // All blockchain operations use admin key to pay for gas
+    BlockchainService::new().await
 }

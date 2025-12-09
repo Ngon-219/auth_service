@@ -12,12 +12,12 @@ pub struct BlockchainService {
 }
 
 impl BlockchainService {
-    /// Create BlockchainService with private key (no default/hardcoded wallet)
-    pub async fn new(private_key: &str) -> Result<Self> {
+    pub async fn new() -> Result<Self> {
         let provider = Provider::<Http>::try_from(&APP_CONFIG.blockchain_rpc_url)
             .context("Failed to create provider")?;
 
-        let wallet: LocalWallet = private_key.parse().context("Failed to parse private key")?;
+        let admin_private_key = APP_CONFIG.admin_private_key.clone();
+        let wallet: LocalWallet = admin_private_key.parse().context("Failed to parse private key")?;
 
         let chain_id = provider.get_chainid().await?;
         let wallet = wallet.with_chain_id(chain_id.as_u64());

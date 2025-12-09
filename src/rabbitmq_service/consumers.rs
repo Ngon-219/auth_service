@@ -109,8 +109,7 @@ impl RabbitMqConsumer {
                             "Message acknowledged, starting blockchain registration..."
                         );
 
-                        let blockchain =
-                            BlockchainService::new(&deserialize_payload.private_key).await?;
+                        let blockchain = BlockchainService::new().await?;
                         let result = blockchain
                             .register_student(
                                 &deserialize_payload.wallet_address,
@@ -334,8 +333,7 @@ impl RabbitMqConsumer {
                             "Message acknowledged, starting blockchain registration..."
                         );
 
-                        let blockchain =
-                            BlockchainService::new(&deserialize_payload.private_key).await?;
+                        let blockchain = BlockchainService::new().await?;
                         let result = blockchain
                             .add_manager(&deserialize_payload.wallet_address)
                             .await;
@@ -480,7 +478,7 @@ impl RabbitMqConsumer {
                     if let Err(e) = delivery.ack(ack_options).await {
                         tracing::error!("Failed to acknowledge assign role message: {}", e);
                     } else {
-                        let blockchain = BlockchainService::new(&payload.private_key).await?;
+                        let blockchain = BlockchainService::new().await?;
                         let result = blockchain
                             .assign_role(&payload.user_address, payload.role)
                             .await;
@@ -615,7 +613,7 @@ impl RabbitMqConsumer {
                     if let Err(e) = delivery.ack(ack_options).await {
                         tracing::error!("Failed to acknowledge remove manager message: {}", e);
                     } else {
-                        let blockchain = BlockchainService::new(&payload.private_key).await?;
+                        let blockchain = BlockchainService::new().await?;
                         let result = blockchain.remove_manager(&payload.manager_address).await;
 
                         match result {
@@ -747,7 +745,7 @@ impl RabbitMqConsumer {
                     if let Err(e) = delivery.ack(ack_options).await {
                         tracing::error!("Failed to acknowledge deactivate student message: {}", e);
                     } else {
-                        let blockchain = BlockchainService::new(&payload.private_key).await?;
+                        let blockchain = BlockchainService::new().await?;
                         let result = blockchain.deactivate_student(payload.student_id).await;
 
                         match result {
@@ -879,7 +877,7 @@ impl RabbitMqConsumer {
                     if let Err(e) = delivery.ack(ack_options).await {
                         tracing::error!("Failed to acknowledge activate student message: {}", e);
                     } else {
-                        let blockchain = BlockchainService::new(&payload.private_key).await?;
+                        let blockchain = BlockchainService::new().await?;
                         let result = blockchain.activate_student(payload.student_id).await;
 
                         match result {
@@ -1014,7 +1012,7 @@ impl RabbitMqConsumer {
                             e
                         );
                     } else {
-                        let blockchain = BlockchainService::new(&payload.private_key).await?;
+                        let blockchain = BlockchainService::new().await?;
                         let result = blockchain
                             .register_students_batch(
                                 payload.wallet_addresses.clone(),
