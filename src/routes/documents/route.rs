@@ -383,6 +383,7 @@ pub async fn get_document_data(
                 certificates
                     .into_iter()
                     .map(|(c, doc_type)| CertificateItem {
+                        certificate_name: c.certificate_name.clone(),
                         document_type_name: doc_type
                             .as_ref()
                             .map(|dt| dt.document_type_name.clone())
@@ -516,6 +517,7 @@ pub async fn mock_certificate(
         .create_certificate_with_data(
             user_id,
             document_type.document_type_id,
+            &payload.certificate_name,
             issued_date,
             expiry_date,
             payload.description.as_deref(),
@@ -535,6 +537,7 @@ pub async fn mock_certificate(
             success: true,
             message: "Certificate created successfully".to_string(),
             certificate: Some(CertificateItem {
+                certificate_name: certificate.certificate_name,
                 document_type_name: document_type.document_type_name,
                 issued_date: certificate.issued_date.to_string(),
                 expiry_date: certificate.expiry_date.map(|d| d.to_string()),

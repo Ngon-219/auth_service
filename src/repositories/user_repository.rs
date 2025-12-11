@@ -35,10 +35,20 @@ impl UserRepository {
         let user = user::Entity::find()
             .filter(user::Column::Email.eq(email))
             .filter(user::Column::DeletedAt.is_null())
-            .filter(user::Column::Status.eq(UserStatus::Sync))
             .one(db)
             .await?;
         Ok(user)
+    }
+
+    pub async fn is_email_used_by_sync_user(&self, email: &str) -> Result<bool> {
+        let db = self.get_connection();
+        let count = user::Entity::find()
+            .filter(user::Column::Email.eq(email))
+            .filter(user::Column::DeletedAt.is_null())
+            .filter(user::Column::Status.eq(UserStatus::Sync))
+            .count(db)
+            .await?;
+        Ok(count > 0)
     }
 
     pub async fn find_all_with_pagination(
@@ -346,9 +356,11 @@ impl UserRepository {
         let db = self.get_connection();
         let user = user::Entity::find()
             .filter(user::Column::Email.eq(email))
+            .filter(user::Column::DeletedAt.is_null())
+            .order_by_desc(user::Column::CreateAt)
             .one(db)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("User not found"))?;
+            .ok_or_else(|| anyhow::anyhow!("User not found for email {}", email))?;
 
         let mut active_user: user::ActiveModel = user.into();
         active_user.status = Set(status);

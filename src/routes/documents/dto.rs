@@ -65,6 +65,7 @@ pub struct SemesterSummaryItem {
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CertificateItem {
+    pub certificate_name: String,
     pub document_type_name: String,
     pub issued_date: String,
     pub expiry_date: Option<String>,
@@ -96,6 +97,7 @@ pub struct MockDataCreated {
 pub struct MockCertificateRequest {
     pub user_email: String,
     pub document_type_id: Uuid,
+    pub certificate_name: String,
     pub issued_date: String,         // Format: YYYY-MM-DD
     pub expiry_date: Option<String>, // Format: YYYY-MM-DD
     pub description: Option<String>,

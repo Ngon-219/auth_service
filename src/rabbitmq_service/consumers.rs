@@ -1251,6 +1251,14 @@ impl RabbitMqConsumer {
         let user_repo = UserRepository::new();
         let wallet_repo = WalletRepository::new();
 
+        // Check if email is already used by a user with Sync status
+        if user_repo.is_email_used_by_sync_user(&payload.email).await? {
+            return Err(anyhow!(
+                "Email {} is already used by an active account (status: Sync)",
+                payload.email
+            ));
+        }
+
         let hashed_password = bcrypt::hash(&payload.password, bcrypt::DEFAULT_COST)
             .map_err(|e| anyhow!("Failed to hash password: {e}"))?;
 

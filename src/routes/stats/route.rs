@@ -8,7 +8,7 @@ use chrono::NaiveDateTime;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect};
 
 use crate::entities::{documents, user};
-use crate::entities::sea_orm_active_enums::RoleEnum;
+use crate::entities::sea_orm_active_enums::{RoleEnum, UserStatus};
 use crate::extractor::AuthClaims;
 use crate::static_service::DATABASE_CONNECTION;
 use do_an_lib::structs::token_claims::UserRole;
@@ -55,8 +55,10 @@ pub async fn get_user_stats(
         .expect("DATABASE_CONNECTION not set");
 
     // Total counts by role
+    // Only count users that were created successfully (status = Sync)
     let total_users = user::Entity::find()
         .filter(user::Column::DeletedAt.is_null())
+        .filter(user::Column::Status.eq(UserStatus::Sync))
         .count(db)
         .await
         .map_err(|e| {
@@ -68,6 +70,7 @@ pub async fn get_user_stats(
 
     let total_students = user::Entity::find()
         .filter(user::Column::DeletedAt.is_null())
+        .filter(user::Column::Status.eq(UserStatus::Sync))
         .filter(user::Column::Role.eq(RoleEnum::Student))
         .count(db)
         .await
@@ -80,6 +83,7 @@ pub async fn get_user_stats(
 
     let total_managers = user::Entity::find()
         .filter(user::Column::DeletedAt.is_null())
+        .filter(user::Column::Status.eq(UserStatus::Sync))
         .filter(user::Column::Role.eq(RoleEnum::Manager))
         .count(db)
         .await
@@ -92,6 +96,7 @@ pub async fn get_user_stats(
 
     let total_teachers = user::Entity::find()
         .filter(user::Column::DeletedAt.is_null())
+        .filter(user::Column::Status.eq(UserStatus::Sync))
         .filter(user::Column::Role.eq(RoleEnum::Teacher))
         .count(db)
         .await
@@ -104,6 +109,7 @@ pub async fn get_user_stats(
 
     let total_admins = user::Entity::find()
         .filter(user::Column::DeletedAt.is_null())
+        .filter(user::Column::Status.eq(UserStatus::Sync))
         .filter(user::Column::Role.eq(RoleEnum::Admin))
         .count(db)
         .await
@@ -117,6 +123,7 @@ pub async fn get_user_stats(
     // Users created per day in range
     let rows = user::Entity::find()
         .filter(user::Column::DeletedAt.is_null())
+        .filter(user::Column::Status.eq(UserStatus::Sync))
         .filter(user::Column::CreateAt.gte(start))
         .filter(user::Column::CreateAt.lte(end))
         .select_only()

@@ -143,6 +143,19 @@ pub async fn create_user(
     }
 
     let user_repo = UserRepository::new();
+    
+    // Check if email is already used by a user with Sync status
+    if user_repo.is_email_used_by_sync_user(&payload.email).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to check email: {}", e),
+        )
+    })? {
+        return Err((
+            StatusCode::CONFLICT,
+            format!("Email {} is already used by an active account", payload.email),
+        ));
+    }
     let wallet_repo = WalletRepository::new();
     let user_uuid = Uuid::parse_str(&auth_claims.user_id).map_err(|e| {
         (
@@ -371,31 +384,33 @@ pub async fn create_users_bulk(
             )
         })?;
 
-    // Check if file has already been processed
-    // Only allow processing if status is "pending"
-    if file_upload.status != "pending" {
+    // Check if file has already been synced to DB
+    // Block sync if status indicates the file has already been synced
+    if file_upload.status == "sync_db" || file_upload.status == "sync_blockchain" || file_upload.status == "sync" {
         return Err((
             StatusCode::BAD_REQUEST,
             format!(
-                "File has already been processed. Current status: {}",
+                "File has already been synced to database. Current status: {}. Cannot sync again.",
                 file_upload.status
             ),
         ));
     }
 
-    // Check if there's already progress (another process might be running)
+    // Check if there's already a process running (another sync might be in progress)
     use crate::redis_service::redis_service::helper_get_current_file_progress;
     let existing_progress = helper_get_current_file_progress(&file_upload.file_name)
         .await
         .ok();
     
     if let Some(progress) = existing_progress {
-        if progress.total > 0 && progress.current > 0 {
+        // Check if process is still running (processed < total means still in progress)
+        let processed = progress.success + progress.failed;
+        if progress.total > 0 && processed < progress.total {
             return Err((
                 StatusCode::CONFLICT,
                 format!(
-                    "File is already being processed. Progress: {}/{}",
-                    progress.current, progress.total
+                    "File is already being processed. Progress: {}/{} (success: {}, failed: {})",
+                    processed, progress.total, progress.success, progress.failed
                 ),
             ));
         }

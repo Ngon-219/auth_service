@@ -177,6 +177,7 @@ impl ScoreRepository {
         let certificate = certificate::ActiveModel {
             user_id: Set(user_id),
             document_type_id: Set(document_type_id),
+            certificate_name: Set(format!("{} Certificate", certificate_type)),
             issued_date: Set(issued_date),
             expiry_date: Set(expiry_date),
             description: Set(Some(format!("Mock {} certificate", certificate_type))),
@@ -201,6 +202,7 @@ impl ScoreRepository {
         &self,
         user_id: Uuid,
         document_type_id: Uuid,
+        certificate_name: &str,
         issued_date: chrono::NaiveDate,
         expiry_date: Option<chrono::NaiveDate>,
         description: Option<&str>,
@@ -211,6 +213,7 @@ impl ScoreRepository {
         let certificate = certificate::ActiveModel {
             user_id: Set(user_id),
             document_type_id: Set(document_type_id),
+            certificate_name: Set(certificate_name.to_string()),
             issued_date: Set(issued_date),
             expiry_date: Set(expiry_date),
             description: Set(description.map(|s| s.to_string())),
